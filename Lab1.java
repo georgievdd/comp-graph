@@ -1,6 +1,9 @@
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
 
 /**
  * Лабораторная работа No 1: Смешивание изображений
@@ -135,6 +138,84 @@ public class Lab1 extends JFrame {
     }
 
     /**
+     * Загрузка изображения из файла
+     */
+    public static BufferedImage loadImage(String filepath) {
+        try {
+            File file = new File(filepath);
+            BufferedImage img = ImageIO.read(file);
+            if (img == null) {
+                System.err.println("Не удалось загрузить изображение: " + filepath);
+                return null;
+            }
+            return img;
+        } catch (IOException e) {
+            System.err.println("Ошибка при загрузке изображения: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Применение круговой маски к изображению
+     * Вписывает максимальный круг в изображение любого размера
+     * Все что внутри круга - видно, за пределами - фон (черный)
+     */
+    public static BufferedImage applyCircularMask(BufferedImage img) {
+        int width = img.getWidth();
+        int height = img.getHeight();
+
+        // Создаем новое изображение в градациях серого
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+
+        // Центр изображения
+        int centerX = width / 2;
+        int centerY = height / 2;
+
+        // Радиус - половина минимальной стороны
+        int radius = Math.min(width, height) / 2;
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                double dx = x - centerX;
+                double dy = y - centerY;
+                double distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance <= radius) {
+                    // Внутри круга - берем оригинальный пиксель
+                    int rgb = img.getRGB(x, y);
+                    // Преобразуем в оттенок серого
+                    int r = (rgb >> 16) & 0xFF;
+                    int g = (rgb >> 8) & 0xFF;
+                    int b = rgb & 0xFF;
+                    int gray = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+                    int grayRGB = (gray << 16) | (gray << 8) | gray;
+                    result.setRGB(x, y, grayRGB);
+                } else {
+                    // За пределами круга - черный фон
+                    result.setRGB(x, y, 0);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Сохранение изображения в файл
+     */
+    public static boolean saveImage(BufferedImage img, String filepath) {
+        try {
+            File outputFile = new File(filepath);
+            ImageIO.write(img, "png", outputFile);
+            System.out.println("Изображение сохранено: " + filepath);
+            return true;
+        } catch (IOException e) {
+            System.err.println("Ошибка при сохранении изображения: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Зеркальное отражение изображения по горизонтали
      */
     public static BufferedImage flipHorizontal(BufferedImage img) {
@@ -196,6 +277,28 @@ public class Lab1 extends JFrame {
     }
 
     public static void main(String[] args) {
+        // Демонстрация работы с реальной фотографией
+        System.out.println("=== Обработка реальной фотографии ===");
+        String inputPath = "res/test_img.png";
+        String outputPath = "res/test_img_circular.png";
+
+        BufferedImage originalImage = loadImage(inputPath);
+        if (originalImage != null) {
+            System.out.println("Загружено изображение: " + originalImage.getWidth() + "x" + originalImage.getHeight());
+
+            // Применяем круговую маску
+            BufferedImage circularImage = applyCircularMask(originalImage);
+
+            // Сохраняем результат
+            saveImage(circularImage, outputPath);
+            System.out.println("Результат обработки: " + outputPath);
+        } else {
+            System.err.println("Не удалось загрузить изображение: " + inputPath);
+        }
+
+        System.out.println();
+
+        // Запуск GUI с синтетическими изображениями
         SwingUtilities.invokeLater(() -> {
             Lab1 frame = new Lab1();
             frame.setVisible(true);
