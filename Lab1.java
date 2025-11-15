@@ -2,6 +2,7 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
 
@@ -166,6 +167,7 @@ public class Lab1 extends JFrame {
 
         // Создаем новое изображение в градациях серого
         BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        WritableRaster raster = result.getRaster();
 
         // Центр изображения
         int centerX = width / 2;
@@ -188,11 +190,11 @@ public class Lab1 extends JFrame {
                     int g = (rgb >> 8) & 0xFF;
                     int b = rgb & 0xFF;
                     int gray = (int) (0.299 * r + 0.587 * g + 0.114 * b);
-                    int grayRGB = (gray << 16) | (gray << 8) | gray;
-                    result.setRGB(x, y, grayRGB);
+                    // Записываем напрямую в raster
+                    raster.setSample(x, y, 0, gray);
                 } else {
                     // За пределами круга - черный фон
-                    result.setRGB(x, y, 0);
+                    raster.setSample(x, y, 0, 0);
                 }
             }
         }
@@ -278,30 +280,142 @@ public class Lab1 extends JFrame {
 
     public static void main(String[] args) {
         // Демонстрация работы с реальной фотографией
-        System.out.println("=== Обработка реальной фотографии ===");
+        System.out.println("=== Лабораторная работа №1: Обработка изображений ===\n");
+
+        // 1. Применение круговой маски
+        System.out.println("1. Применение круговой маски к фотографии:");
         String inputPath = "res/test_img.png";
-        String outputPath = "res/test_img_circular.png";
+        String outputCircular = "res/test_img_circular.png";
 
         BufferedImage originalImage = loadImage(inputPath);
         if (originalImage != null) {
-            System.out.println("Загружено изображение: " + originalImage.getWidth() + "x" + originalImage.getHeight());
+            System.out.println("   Загружено: " + originalImage.getWidth() + "x" + originalImage.getHeight() + " пикселей");
 
-            // Применяем круговую маску
             BufferedImage circularImage = applyCircularMask(originalImage);
-
-            // Сохраняем результат
-            saveImage(circularImage, outputPath);
-            System.out.println("Результат обработки: " + outputPath);
-        } else {
-            System.err.println("Не удалось загрузить изображение: " + inputPath);
+            saveImage(circularImage, outputCircular);
+            System.out.println("   Результат: " + outputCircular);
         }
 
-        System.out.println();
+        // 2. Зеркальное отражение
+        System.out.println("\n2. Зеркальное отражение фотографии:");
+        if (originalImage != null) {
+            BufferedImage flipped = flipHorizontal(originalImage);
+            // Конвертируем в grayscale для единообразия
+            BufferedImage flippedGray = convertToGrayscale(flipped);
+            saveImage(flippedGray, "res/test_img_flipped.png");
+            System.out.println("   Результат: res/test_img_flipped.png");
+        }
+
+        // 3. Транспонирование
+        System.out.println("\n3. Транспонирование фотографии:");
+        if (originalImage != null) {
+            BufferedImage transposed = transpose(originalImage);
+            BufferedImage transposedGray = convertToGrayscale(transposed);
+            saveImage(transposedGray, "res/test_img_transposed.png");
+            System.out.println("   Результат: res/test_img_transposed.png");
+        }
+
+        // 4. Смешивание двух фотографий
+        System.out.println("\n4. Смешивание двух фотографий с альфа-каналом:");
+        BufferedImage photo1 = loadImage("res/test_img.png");
+        BufferedImage photo2 = loadImage("res/test_img_flipped.png");
+
+        if (photo1 != null && photo2 != null) {
+            // Создаем альфа-канал - круговой градиент
+            int width = photo1.getWidth();
+            int height = photo1.getHeight();
+            BufferedImage alphaPhoto = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+            WritableRaster alphaRaster = alphaPhoto.getRaster();
+
+            int centerX = width / 2;
+            int centerY = height / 2;
+            int radius = Math.min(width, height) / 2;
+
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    double dx = x - centerX;
+                    double dy = y - centerY;
+                    double distance = Math.sqrt(dx * dx + dy * dy);
+
+                    int alpha;
+                    if (distance <= radius) {
+                        alpha = (int) (255 * distance / radius);
+                    } else {
+                        alpha = 255;
+                    }
+                    alphaRaster.setSample(x, y, 0, alpha);
+                }
+            }
+
+            // Смешиваем изображения
+            BufferedImage blended = blendTwoImages(
+                convertToGrayscale(photo1),
+                convertToGrayscale(photo2),
+                alphaPhoto
+            );
+            saveImage(blended, "res/test_img_blended.png");
+            System.out.println("   Результат: res/test_img_blended.png");
+        }
+
+        System.out.println("\n=== Запуск GUI с синтетическими изображениями ===\n");
 
         // Запуск GUI с синтетическими изображениями
         SwingUtilities.invokeLater(() -> {
             Lab1 frame = new Lab1();
             frame.setVisible(true);
         });
+    }
+
+    /**
+     * Конвертация изображения в градации серого
+     */
+    private static BufferedImage convertToGrayscale(BufferedImage img) {
+        int width = img.getWidth();
+        int height = img.getHeight();
+        BufferedImage gray = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        WritableRaster raster = gray.getRaster();
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int rgb = img.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                int grayValue = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+                raster.setSample(x, y, 0, grayValue);
+            }
+        }
+
+        return gray;
+    }
+
+    /**
+     * Смешивание двух изображений с альфа-каналом (статическая версия)
+     */
+    private static BufferedImage blendTwoImages(BufferedImage img1, BufferedImage img2, BufferedImage alpha) {
+        int width = img1.getWidth();
+        int height = img1.getHeight();
+
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        WritableRaster raster = result.getRaster();
+        WritableRaster raster1 = img1.getRaster();
+        WritableRaster raster2 = img2.getRaster();
+        WritableRaster rasterAlpha = alpha.getRaster();
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int pixel1 = raster1.getSample(x, y, 0);
+                int pixel2 = raster2.getSample(x, y, 0);
+                int alphaValue = rasterAlpha.getSample(x, y, 0);
+
+                double a = alphaValue / 255.0;
+                int blended = (int) (pixel1 * (1 - a) + pixel2 * a);
+                blended = Math.max(0, Math.min(255, blended));
+
+                raster.setSample(x, y, 0, blended);
+            }
+        }
+
+        return result;
     }
 }

@@ -84,7 +84,7 @@ result = img1 * (1 - alpha) + img2 * alpha
 
 ### Работа с реальными фотографиями
 
-#### Применение круговой маски
+#### 1. Применение круговой маски
 
 Реализован функционал для обработки реальных фотографий с применением круговой маски.
 
@@ -93,41 +93,65 @@ result = img1 * (1 - alpha) + img2 * alpha
 - Радиус круга: `radius = min(width, height) / 2`
 - Центр круга: `(width/2, height/2)`
 - Конвертирует изображение в градации серого (8 bpp)
-- Содержимое внутри круга сохраняется
+- Содержимое внутри круга сохраняется с правильной яркостью
 - Область за пределами круга заполняется черным фоном
+- Использует `WritableRaster` для корректной работы с TYPE_BYTE_GRAY
 
 **Формула преобразования в оттенки серого:**
 ```java
 gray = 0.299 * R + 0.587 * G + 0.114 * B
 ```
 
-**Дополнительные методы:**
-- `loadImage(String filepath)` - загрузка изображения из файла
-- `saveImage(BufferedImage img, String filepath)` - сохранение результата в PNG
+**Исправление проблемы затемнения:**
+Изначальная реализация использовала `setRGB()` для TYPE_BYTE_GRAY изображений, что приводило к некорректной записи значений яркости. Исправлено путем использования `WritableRaster.setSample()` для прямой записи в канал яркости.
 
-#### Пример обработки
-
-**Входное изображение:** `res/test_img.png` (600x400 пикселей)
-
-**Результат:** `res/test_img_circular.png`
-
-| Оригинал | Результат |
-|----------|-----------|
+| Оригинал | Круговая маска |
+|----------|----------------|
 | ![test_img.png](res/test_img.png) | ![test_img_circular.png](res/test_img_circular.png) |
 
-**Параметры обработки:**
-- Размер изображения: 600x400
-- Радиус круга: 200 пикселей (min(600, 400) / 2)
-- Формат вывода: PNG, 8 bpp grayscale
+#### 2. Зеркальное отражение
+
+**Метод `flipHorizontal(BufferedImage img)`:**
+- Отражает изображение по горизонтали
+- Результат конвертируется в grayscale (8 bpp)
+
+| Оригинал | Зеркальное отражение |
+|----------|----------------------|
+| ![test_img.png](res/test_img.png) | ![test_img_flipped.png](res/test_img_flipped.png) |
+
+#### 3. Транспонирование
+
+**Метод `transpose(BufferedImage img)`:**
+- Транспонирует изображение (поворот на 90° с отражением)
+- Результат: 400x600 пикселей (было 600x400)
+
+#### 4. Смешивание двух фотографий с альфа-каналом
+
+**Демонстрация:**
+- Первое изображение: оригинальная фотография
+- Второе изображение: зеркально отраженная версия
+- Альфа-канал: круговой градиент от центра к краям
+- Формула: `result = img1 * (1 - alpha) + img2 * alpha`
+
+| Результат смешивания |
+|---------------------|
+| ![test_img_blended.png](res/test_img_blended.png) |
 
 **Использование:**
 ```java
+// Круговая маска
 BufferedImage originalImage = Lab1.loadImage("res/test_img.png");
 BufferedImage circularImage = Lab1.applyCircularMask(originalImage);
 Lab1.saveImage(circularImage, "res/test_img_circular.png");
-```
 
-Функция автоматически адаптируется к изображениям любого размера, вписывая максимально возможный круг.
+// Зеркальное отражение
+BufferedImage flipped = Lab1.flipHorizontal(originalImage);
+Lab1.saveImage(flipped, "res/test_img_flipped.png");
+
+// Транспонирование
+BufferedImage transposed = Lab1.transpose(originalImage);
+Lab1.saveImage(transposed, "res/test_img_transposed.png");
+```
 
 ---
 
@@ -224,7 +248,74 @@ pixels[y+1][x]     += error * 5/16  // снизу
 pixels[y+1][x+1]   += error * 1/16  // снизу справа
 ```
 
-#### Результат
+#### Результаты работы с синтетическими изображениями
 ![img.png](res/img2.png)
+
+### Работа с реальными фотографиями
+
+Демонстрация работы алгоритма Floyd-Steinberg на реальной фотографии с различным количеством бит на пиксель.
+
+#### Исходное изображение
+| Оригинал (цветной) | Grayscale 8 bpp |
+|-------------------|-----------------|
+| ![test_img.png](res/test_img.png) | ![test_photo_original_gray.png](res/test_photo_original_gray.png) |
+
+#### Результаты dithering для разных значений bpp
+
+**1 bpp (2 уровня яркости: 0, 255)**
+
+Изображение квантуется только в два уровня - черный и белый. Алгоритм Floyd-Steinberg сохраняет детали за счет распределения ошибки квантования.
+
+| Стандартный Floyd-Steinberg | С чередующимся сканированием |
+|----------------------------|------------------------------|
+| ![test_photo_1bpp.png](res/test_photo_1bpp.png) | ![test_photo_1bpp_alternating.png](res/test_photo_1bpp_alternating.png) |
+
+**2 bpp (4 уровня яркости: 0, 85, 170, 255)**
+
+Четыре уровня яркости обеспечивают лучшее сохранение градиентов и деталей изображения.
+
+| Стандартный Floyd-Steinberg | С чередующимся сканированием |
+|----------------------------|------------------------------|
+| ![test_photo_2bpp.png](res/test_photo_2bpp.png) | ![test_photo_2bpp_alternating.png](res/test_photo_2bpp_alternating.png) |
+
+**3 bpp (8 уровней яркости: 0, 36, 73, 109, 146, 182, 219, 255)**
+
+Восемь уровней яркости дают результат, визуально близкий к оригинальному изображению.
+
+| Стандартный Floyd-Steinberg | С чередующимся сканированием |
+|----------------------------|------------------------------|
+| ![test_photo_3bpp.png](res/test_photo_3bpp.png) | ![test_photo_3bpp_alternating.png](res/test_photo_3bpp_alternating.png) |
+
+#### Наблюдения
+
+1. **1 bpp:** Хорошо подходит для текста и высококонтрастных изображений. На фотографиях теряется много деталей, но общая структура сохраняется.
+
+2. **2 bpp:** Оптимальный компромисс между размером и качеством для многих применений. Детали изображения хорошо различимы.
+
+3. **3 bpp:** Результат очень близок к оригинальному 8 bpp изображению. Подходит для высококачественного отображения.
+
+4. **Чередующееся сканирование:** Особенно заметно улучшение на градиентах и областях с плавными переходами.
+
+#### Технические детали
+
+```java
+// Применение dithering к фотографии
+BufferedImage photo = Lab2.loadImage("res/test_img.png");
+BufferedImage grayPhoto = Lab2.convertToGrayscale(photo);
+
+Lab2 lab2 = new Lab2();
+
+// 1 bpp
+BufferedImage dithered1bpp = lab2.floydSteinbergDithering(grayPhoto, 1);
+Lab2.saveImage(dithered1bpp, "res/test_photo_1bpp.png");
+
+// 2 bpp
+BufferedImage dithered2bpp = lab2.floydSteinbergDithering(grayPhoto, 2);
+Lab2.saveImage(dithered2bpp, "res/test_photo_2bpp.png");
+
+// 3 bpp
+BufferedImage dithered3bpp = lab2.floydSteinbergDithering(grayPhoto, 3);
+Lab2.saveImage(dithered3bpp, "res/test_photo_3bpp.png");
+```
 
 ---

@@ -1,6 +1,10 @@
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.image.WritableRaster;
+import java.io.File;
+import java.io.IOException;
 
 /**
  * Лабораторная работа No 2: Алгоритм рассеивания ошибки
@@ -263,7 +267,109 @@ public class Lab2 extends JFrame {
         }
     }
 
+    /**
+     * Загрузка изображения из файла
+     */
+    public static BufferedImage loadImage(String filepath) {
+        try {
+            File file = new File(filepath);
+            BufferedImage img = ImageIO.read(file);
+            if (img == null) {
+                System.err.println("Не удалось загрузить изображение: " + filepath);
+                return null;
+            }
+            return img;
+        } catch (IOException e) {
+            System.err.println("Ошибка при загрузке изображения: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Сохранение изображения в файл
+     */
+    public static boolean saveImage(BufferedImage img, String filepath) {
+        try {
+            File outputFile = new File(filepath);
+            ImageIO.write(img, "png", outputFile);
+            System.out.println("   Сохранено: " + filepath);
+            return true;
+        } catch (IOException e) {
+            System.err.println("Ошибка при сохранении изображения: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Конвертация изображения в градации серого
+     */
+    public static BufferedImage convertToGrayscale(BufferedImage img) {
+        int width = img.getWidth();
+        int height = img.getHeight();
+        BufferedImage gray = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        WritableRaster raster = gray.getRaster();
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int rgb = img.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                int grayValue = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+                raster.setSample(x, y, 0, grayValue);
+            }
+        }
+
+        return gray;
+    }
+
     public static void main(String[] args) {
+        System.out.println("=== Лабораторная работа №2: Floyd-Steinberg Dithering ===\n");
+
+        // Демонстрация работы с реальной фотографией
+        System.out.println("Обработка реальной фотографии с разным количеством бит на пиксель:\n");
+        String inputPath = "res/test_img.png";
+
+        BufferedImage originalPhoto = loadImage(inputPath);
+        if (originalPhoto != null) {
+            // Конвертируем в grayscale
+            BufferedImage grayPhoto = convertToGrayscale(originalPhoto);
+            saveImage(grayPhoto, "res/test_photo_original_gray.png");
+
+            System.out.println("Загружено: " + grayPhoto.getWidth() + "x" + grayPhoto.getHeight() + " пикселей\n");
+
+            // Создаем временный объект для использования методов dithering
+            Lab2 lab2 = new Lab2();
+
+            // 1 bpp (2 уровня - черный и белый)
+            System.out.println("1. Dithering 1 bpp (2 уровня):");
+            BufferedImage dithered1bpp = lab2.floydSteinbergDithering(grayPhoto, 1);
+            saveImage(dithered1bpp, "res/test_photo_1bpp.png");
+
+            BufferedImage dithered1bppAlt = lab2.floydSteinbergDitheringAlternating(grayPhoto, 1);
+            saveImage(dithered1bppAlt, "res/test_photo_1bpp_alternating.png");
+
+            // 2 bpp (4 уровня)
+            System.out.println("\n2. Dithering 2 bpp (4 уровня):");
+            BufferedImage dithered2bpp = lab2.floydSteinbergDithering(grayPhoto, 2);
+            saveImage(dithered2bpp, "res/test_photo_2bpp.png");
+
+            BufferedImage dithered2bppAlt = lab2.floydSteinbergDitheringAlternating(grayPhoto, 2);
+            saveImage(dithered2bppAlt, "res/test_photo_2bpp_alternating.png");
+
+            // 3 bpp (8 уровней)
+            System.out.println("\n3. Dithering 3 bpp (8 уровней):");
+            BufferedImage dithered3bpp = lab2.floydSteinbergDithering(grayPhoto, 3);
+            saveImage(dithered3bpp, "res/test_photo_3bpp.png");
+
+            BufferedImage dithered3bppAlt = lab2.floydSteinbergDitheringAlternating(grayPhoto, 3);
+            saveImage(dithered3bppAlt, "res/test_photo_3bpp_alternating.png");
+
+            System.out.println("\n=== Результаты сохранены ===\n");
+        }
+
+        System.out.println("=== Запуск GUI с синтетическими изображениями ===\n");
+
         SwingUtilities.invokeLater(() -> {
             Lab2 frame = new Lab2();
             frame.setVisible(true);
