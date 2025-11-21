@@ -222,6 +222,10 @@ public class Lab3 extends JFrame {
         int n = polygon.vertices.size();
         if (n < 3) return false;
 
+        if (!isSimplePolygon(polygon)) {
+            return false;
+        }
+
         boolean hasPositive = false;
         boolean hasNegative = false;
 
@@ -276,9 +280,45 @@ public class Lab3 extends JFrame {
     }
 
     /**
+     * Проверка, лежит ли точка на границе полигона (вершина или сторона)
+     */
+    private static boolean isPointOnPolygonBoundary(Polygon polygon, int x, int y) {
+        int n = polygon.vertices.size();
+        Point p = new Point(x, y);
+
+        for (int i = 0; i < n; i++) {
+            Point p1 = polygon.vertices.get(i);
+            Point p2 = polygon.vertices.get((i + 1) % n);
+
+            // Проверяем, лежит ли точка на отрезке p1-p2
+            if (isPointOnSegment(p1, p2, p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Проверка, лежит ли точка на отрезке
+     */
+    private static boolean isPointOnSegment(Point p1, Point p2, Point p) {
+        // Векторное произведение должно быть 0 (коллинеарность)
+        double cross = (p.x - p1.x) * (p2.y - p1.y) - (p.y - p1.y) * (p2.x - p1.x);
+        if (Math.abs(cross) > 0.0001) return false;
+
+        // Точка должна лежать в bounding box отрезка
+        return p.x >= Math.min(p1.x, p2.x) && p.x <= Math.max(p1.x, p2.x) &&
+               p.y >= Math.min(p1.y, p2.y) && p.y <= Math.max(p1.y, p2.y);
+    }
+
+    /**
      * Проверка принадлежности точки полигону по правилу even-odd
      */
     private static boolean isInsideEvenOdd(Polygon polygon, int x, int y) {
+        if (isPointOnPolygonBoundary(polygon, x, y)) {
+            return true;
+        }
+
         int intersections = 0;
         int n = polygon.vertices.size();
 
@@ -351,6 +391,10 @@ public class Lab3 extends JFrame {
      * Проверка принадлежности точки полигону по правилу non-zero winding
      */
     private static boolean isInsideNonZeroWinding(Polygon polygon, int x, int y) {
+        if (isPointOnPolygonBoundary(polygon, x, y)) {
+            return true;
+        }
+
         int windingNumber = 0;
         int n = polygon.vertices.size();
 

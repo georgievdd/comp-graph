@@ -15,6 +15,11 @@ public class Lab2 extends JFrame {
     private static final int WIDTH = 1000;
     private static final int HEIGHT = 600;
 
+    private static final double ERR_7_16 = 7.0 / 16.0;
+    private static final double ERR_5_16 = 5.0 / 16.0;
+    private static final double ERR_3_16 = 3.0 / 16.0;
+    private static final double ERR_1_16 = 1.0 / 16.0;
+
     private BufferedImage originalImage;
     private BufferedImage ditheredImage;
     private BufferedImage ditheredImageAlternating;
@@ -78,7 +83,12 @@ public class Lab2 extends JFrame {
     }
 
     /**
-     * Алгоритм Floyd-Steinberg dithering
+     * Алгоритм Floyd-Steinberg dithering (МАКСИМАЛЬНО ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)
+     * Оптимизации:
+     * 1. WritableRaster для прямого доступа к пикселям
+     * 2. Предвычисленные константы коэффициентов
+     * 3. Построчная обработка (O(width) памяти вместо O(width×height))
+     * 4. Один проход по изображению вместо трёх
      * @param source исходное изображение
      * @param bitsPerPixel количество бит на пиксель в результате (n < 8)
      * @return изображение после применения dithering
@@ -87,59 +97,63 @@ public class Lab2 extends JFrame {
         int width = source.getWidth();
         int height = source.getHeight();
 
-        // Создаем копию для работы (храним значения с плавающей точкой для точности)
-        double[][] pixels = new double[height][width];
-
-        // Копируем исходное изображение
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                pixels[y][x] = source.getRGB(x, y) & 0xFF;
-            }
-        }
+        // Создаем результирующее изображение
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        WritableRaster sourceRaster = source.getRaster();
+        WritableRaster resultRaster = result.getRaster();
 
         // Вычисляем количество допустимых уровней
         int levels = (int) Math.pow(2, bitsPerPixel);
         double step = 255.0 / (levels - 1);
 
-        // Применяем Floyd-Steinberg dithering
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                double oldPixel = pixels[y][x];
+        double[] currentRow = new double[width];
+        double[] nextRow = new double[width];
 
-                // Находим ближайший допустимый уровень
+        for (int x = 0; x < width; x++) {
+            currentRow[x] = sourceRaster.getSample(x, 0, 0);
+        }
+
+        for (int y = 0; y < height; y++) {
+            if (y + 1 < height) {
+                for (int x = 0; x < width; x++) {
+                    nextRow[x] = sourceRaster.getSample(x, y + 1, 0);
+                }
+            }
+
+            // Обрабатываем текущую строку
+            for (int x = 0; x < width; x++) {
+                double oldPixel = currentRow[x];
+
                 int newPixel = findNearestLevel(oldPixel, levels, step);
-                pixels[y][x] = newPixel;
+
+                resultRaster.setSample(x, y, 0, newPixel);
 
                 // Вычисляем ошибку
                 double error = oldPixel - newPixel;
 
                 // Распределяем ошибку на соседние пиксели
-                // Схема Floyd-Steinberg:
-                //          X    7/16
-                //   3/16  5/16  1/16
-
                 if (x + 1 < width) {
-                    pixels[y][x + 1] += error * 7.0 / 16.0;
+                    currentRow[x + 1] += error * ERR_7_16;
                 }
                 if (y + 1 < height) {
                     if (x - 1 >= 0) {
-                        pixels[y + 1][x - 1] += error * 3.0 / 16.0;
+                        nextRow[x - 1] += error * ERR_3_16;
                     }
-                    pixels[y + 1][x] += error * 5.0 / 16.0;
+                    nextRow[x] += error * ERR_5_16;
                     if (x + 1 < width) {
-                        pixels[y + 1][x + 1] += error * 1.0 / 16.0;
+                        nextRow[x + 1] += error * ERR_1_16;
                     }
                 }
             }
-        }
 
-        // Создаем результирующее изображение
-        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int value = (int) Math.max(0, Math.min(255, pixels[y][x]));
-                int gray = (value << 16) | (value << 8) | value;
-                result.setRGB(x, y, gray);
+            // Переключаем буферы (избегаем копирования)
+            double[] temp = currentRow;
+            currentRow = nextRow;
+            nextRow = temp;
+
+            // Очищаем буфер для следующей итерации
+            if (y + 2 < height) {
+                java.util.Arrays.fill(nextRow, 0);
             }
         }
 
@@ -148,85 +162,100 @@ public class Lab2 extends JFrame {
 
     /**
      * Алгоритм Floyd-Steinberg с чередующимся направлением сканирования
-     * для четных и нечетных строк
      */
     private BufferedImage floydSteinbergDitheringAlternating(BufferedImage source, int bitsPerPixel) {
         int width = source.getWidth();
         int height = source.getHeight();
 
-        double[][] pixels = new double[height][width];
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                pixels[y][x] = source.getRGB(x, y) & 0xFF;
-            }
-        }
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        WritableRaster sourceRaster = source.getRaster();
+        WritableRaster resultRaster = result.getRaster();
 
         int levels = (int) Math.pow(2, bitsPerPixel);
         double step = 255.0 / (levels - 1);
 
+        double[] currentRow = new double[width];
+        double[] nextRow = new double[width];
+
+        // Инициализируем первую строку
+        for (int x = 0; x < width; x++) {
+            currentRow[x] = sourceRaster.getSample(x, 0, 0);
+        }
+
+        // Обрабатываем изображение построчно
         for (int y = 0; y < height; y++) {
-            if (y % 2 == 0) {
+            boolean leftToRight = (y % 2 == 0);
+
+            // Загружаем следующую строку (если есть)
+            if (y + 1 < height) {
+                for (int x = 0; x < width; x++) {
+                    nextRow[x] = sourceRaster.getSample(x, y + 1, 0);
+                }
+            }
+
+            if (leftToRight) {
                 // Четные строки: слева направо
                 for (int x = 0; x < width; x++) {
-                    processPixel(pixels, x, y, width, height, levels, step, true);
+                    processPixelOptimized(currentRow, nextRow, resultRaster, x, y, width, height, levels, step, true);
                 }
             } else {
                 // Нечетные строки: справа налево
                 for (int x = width - 1; x >= 0; x--) {
-                    processPixel(pixels, x, y, width, height, levels, step, false);
+                    processPixelOptimized(currentRow, nextRow, resultRaster, x, y, width, height, levels, step, false);
                 }
             }
-        }
 
-        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int value = (int) Math.max(0, Math.min(255, pixels[y][x]));
-                int gray = (value << 16) | (value << 8) | value;
-                result.setRGB(x, y, gray);
+            // Переключаем буферы
+            double[] temp = currentRow;
+            currentRow = nextRow;
+            nextRow = temp;
+
+            // Очищаем буфер для следующей итерации
+            if (y + 2 < height) {
+                java.util.Arrays.fill(nextRow, 0);
             }
         }
 
         return result;
     }
 
-    /**
-     * Обработка одного пикселя для алгоритма с чередующимся направлением
-     */
-    private void processPixel(double[][] pixels, int x, int y, int width, int height,
-                              int levels, double step, boolean leftToRight) {
-        double oldPixel = pixels[y][x];
+    private void processPixelOptimized(double[] currentRow, double[] nextRow, WritableRaster resultRaster,
+                                       int x, int y, int width, int height,
+                                       int levels, double step, boolean leftToRight) {
+        double oldPixel = currentRow[x];
         int newPixel = findNearestLevel(oldPixel, levels, step);
-        pixels[y][x] = newPixel;
+
+        // Сразу записываем результат
+        resultRaster.setSample(x, y, 0, newPixel);
+
         double error = oldPixel - newPixel;
 
         if (leftToRight) {
             // Распространение ошибки слева направо
             if (x + 1 < width) {
-                pixels[y][x + 1] += error * 7.0 / 16.0;
+                currentRow[x + 1] += error * ERR_7_16;
             }
             if (y + 1 < height) {
                 if (x - 1 >= 0) {
-                    pixels[y + 1][x - 1] += error * 3.0 / 16.0;
+                    nextRow[x - 1] += error * ERR_3_16;
                 }
-                pixels[y + 1][x] += error * 5.0 / 16.0;
+                nextRow[x] += error * ERR_5_16;
                 if (x + 1 < width) {
-                    pixels[y + 1][x + 1] += error * 1.0 / 16.0;
+                    nextRow[x + 1] += error * ERR_1_16;
                 }
             }
         } else {
             // Распространение ошибки справа налево (зеркально)
             if (x - 1 >= 0) {
-                pixels[y][x - 1] += error * 7.0 / 16.0;
+                currentRow[x - 1] += error * ERR_7_16;
             }
             if (y + 1 < height) {
                 if (x + 1 < width) {
-                    pixels[y + 1][x + 1] += error * 3.0 / 16.0;
+                    nextRow[x + 1] += error * ERR_3_16;
                 }
-                pixels[y + 1][x] += error * 5.0 / 16.0;
+                nextRow[x] += error * ERR_5_16;
                 if (x - 1 >= 0) {
-                    pixels[y + 1][x - 1] += error * 1.0 / 16.0;
+                    nextRow[x - 1] += error * ERR_1_16;
                 }
             }
         }
