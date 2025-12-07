@@ -106,22 +106,51 @@ public class Lab3 extends JFrame {
      * Алгоритм Брезенхема для рисования линии
      */
     public static void drawLine(BufferedImage img, int x0, int y0, int x1, int y1, int color) {
+        drawLine(img, x0, y0, x1, y1, color, 1.0, 0.0);
+    }
+
+    public static void drawLine(BufferedImage img, int x0, int y0, int x1, int y1, int color, double dashLength, double gapLength) {
         WritableRaster raster = img.getRaster();
         int width = img.getWidth();
         int height = img.getHeight();
 
-        int dx = Math.abs(x1 - x0);
-        int dy = Math.abs(y1 - y0);
-        int sx = x0 < x1 ? 1 : -1;
-        int sy = y0 < y1 ? 1 : -1;
-        int err = dx - dy;
+        int origX0 = x0, origY0 = y0, origX1 = x1, origY1 = y1;
+        boolean swapped = false;
 
+        if (x0 > x1 || (x0 == x1 && y0 > y1)) {
+            int temp;
+            temp = x0; x0 = x1; x1 = temp;
+            temp = y0; y0 = y1; y1 = temp;
+            swapped = true;
+        }
+
+        int dx = x1 - x0;
+        int dy = y1 - y0;
+        int sx = 1;
+        int sy = dy >= 0 ? 1 : -1;
+        dy = Math.abs(dy);
+
+        double totalLength = Math.sqrt(dx * dx + dy * dy);
+        double dashPixels = dashLength * totalLength;
+        double gapPixels = gapLength * totalLength;
+        double patternLength = dashPixels + gapPixels;
+
+        int err = dx - dy;
         int x = x0;
         int y = y0;
 
+        double traveled = 0.0;
+
         while (true) {
-            // Рисуем пиксель, если он в пределах изображения
-            if (x >= 0 && x < width && y >= 0 && y < height) {
+            boolean shouldDraw;
+            if (patternLength > 0) {
+                double posInPattern = traveled % patternLength;
+                shouldDraw = posInPattern < dashPixels;
+            } else {
+                shouldDraw = true;
+            }
+
+            if (shouldDraw && x >= 0 && x < width && y >= 0 && y < height) {
                 raster.setSample(x, y, 0, color);
             }
 
@@ -136,6 +165,8 @@ public class Lab3 extends JFrame {
                 err += dx;
                 y += sy;
             }
+
+            traveled += 1.0;
         }
     }
 
@@ -526,16 +557,36 @@ public class Lab3 extends JFrame {
 
         Lab3 lab = new Lab3();
 
-        // Сохраняем демонстрационные изображения
+        System.out.println("Демонстрация штриховых линий:");
+        BufferedImage dashedDemo = new BufferedImage(400, 300, BufferedImage.TYPE_BYTE_GRAY);
+        WritableRaster raster = dashedDemo.getRaster();
+        for (int y = 0; y < 300; y++) {
+            for (int x = 0; x < 400; x++) {
+                raster.setSample(x, y, 0, 255);
+            }
+        }
+
+        drawLine(dashedDemo, 20, 30, 380, 30, 0);
+        drawLine(dashedDemo, 20, 60, 380, 60, 0, 0.3, 0.1);
+        drawLine(dashedDemo, 20, 90, 380, 90, 0, 0.2, 0.05);
+        drawLine(dashedDemo, 20, 120, 380, 120, 0, 0.1, 0.1);
+        drawLine(dashedDemo, 20, 150, 380, 150, 0, 0.15, 0.05);
+
+        drawLine(dashedDemo, 50, 180, 350, 280, 0, 0.3, 0.1);
+        drawLine(dashedDemo, 150, 180, 250, 280, 0, 0.2, 0.1);
+        drawLine(dashedDemo, 250, 180, 150, 280, 0, 0.15, 0.15);
+
+        saveImage(dashedDemo, "res/dashed_lines_demo.png");
+        System.out.println("  Сохранено: res/dashed_lines_demo.png\n");
+
         System.out.println("Создание демонстрационных изображений:\n");
 
         for (Polygon poly : lab.testPolygons) {
             String baseName = "res/polygon_" + poly.name.toLowerCase()
                 .replaceAll("[^a-z0-9]", "_");
 
-            // 1. Только контур
             BufferedImage outline = new BufferedImage(200, 200, BufferedImage.TYPE_BYTE_GRAY);
-            WritableRaster raster = outline.getRaster();
+            raster = outline.getRaster();
             for (int y = 0; y < 200; y++) {
                 for (int x = 0; x < 200; x++) {
                     raster.setSample(x, y, 0, 255);
@@ -544,7 +595,6 @@ public class Lab3 extends JFrame {
             drawPolygon(outline, poly, 0);
             saveImage(outline, baseName + "_outline.png");
 
-            // 2. Even-Odd fill
             BufferedImage evenOdd = new BufferedImage(200, 200, BufferedImage.TYPE_BYTE_GRAY);
             raster = evenOdd.getRaster();
             for (int y = 0; y < 200; y++) {
@@ -556,7 +606,6 @@ public class Lab3 extends JFrame {
             drawPolygon(evenOdd, poly, 0);
             saveImage(evenOdd, baseName + "_evenodd.png");
 
-            // 3. Non-Zero Winding fill
             BufferedImage nonZero = new BufferedImage(200, 200, BufferedImage.TYPE_BYTE_GRAY);
             raster = nonZero.getRaster();
             for (int y = 0; y < 200; y++) {
@@ -568,7 +617,6 @@ public class Lab3 extends JFrame {
             drawPolygon(nonZero, poly, 0);
             saveImage(nonZero, baseName + "_nonzero.png");
 
-            // Информация о полигоне
             boolean isSimple = isSimplePolygon(poly);
             boolean isConvex = isConvexPolygon(poly);
             System.out.println(poly.name + ":");
