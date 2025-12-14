@@ -144,7 +144,12 @@ public class Lab3 extends JFrame {
         while (true) {
             boolean shouldDraw;
             if (patternLength > 0) {
-                double posInPattern = traveled % patternLength;
+                double posInPattern;
+                if (swapped) {
+                    posInPattern = (totalLength - traveled) % patternLength;
+                } else {
+                    posInPattern = traveled % patternLength;
+                }
                 shouldDraw = posInPattern < dashPixels;
             } else {
                 shouldDraw = true;
