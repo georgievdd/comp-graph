@@ -20,8 +20,8 @@ public class Lab5 extends JFrame {
     private static final int WIDTH = 1400;
     private static final int HEIGHT = 800;
 
-    // Параметры проекции
-    private static final double PERSPECTIVE_K = 500.0; // Расстояние до центра проекции
+    // Параметры проекции (сильный эффект перспективы)
+    private static final double PERSPECTIVE_K = 200.0; // Расстояние до центра проекции
 
     // Параметры анимации
     private double angle = 0.0;
@@ -98,6 +98,47 @@ public class Lab5 extends JFrame {
         public Point2D(double x, double y) {
             this.x = x;
             this.y = y;
+        }
+    }
+
+    /**
+     * Точка в однородных координатах (x, y, z, w)
+     */
+    static class Point4D {
+        double x, y, z, w;
+
+        public Point4D(double x, double y, double z, double w) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.w = w;
+        }
+
+        public Point4D(Point3D p) {
+            this.x = p.x;
+            this.y = p.y;
+            this.z = p.z;
+            this.w = 1.0;
+        }
+
+        /**
+         * Преобразование из однородных координат в 3D (деление на w)
+         */
+        public Point3D toPoint3D() {
+            if (Math.abs(w) < 1e-10) {
+                return new Point3D(x * 1e6, y * 1e6, z * 1e6);
+            }
+            return new Point3D(x / w, y / w, z / w);
+        }
+
+        /**
+         * Преобразование в 2D (проекция на z=0 с делением на w)
+         */
+        public Point2D toPoint2D() {
+            if (Math.abs(w) < 1e-10) {
+                return new Point2D(x * 1e6, y * 1e6);
+            }
+            return new Point2D(x / w, y / w);
         }
     }
 
@@ -252,25 +293,86 @@ public class Lab5 extends JFrame {
     }
 
     /**
-     * Параллельная проекция на плоскость Z=0
+     * Преобразование точки в однородных координатах матрицей 4x4
      */
-    public static Point2D parallelProjection(Point3D p) {
-        return new Point2D(p.x, p.y);
+    public static Point4D transformPoint4D(Point3D p, double[][] matrix) {
+        double x = matrix[0][0] * p.x + matrix[0][1] * p.y + matrix[0][2] * p.z + matrix[0][3];
+        double y = matrix[1][0] * p.x + matrix[1][1] * p.y + matrix[1][2] * p.z + matrix[1][3];
+        double z = matrix[2][0] * p.x + matrix[2][1] * p.y + matrix[2][2] * p.z + matrix[2][3];
+        double w = matrix[3][0] * p.x + matrix[3][1] * p.y + matrix[3][2] * p.z + matrix[3][3];
+        return new Point4D(x, y, z, w);
     }
 
     /**
-     * Перспективная проекция с центром в (0, 0, k)
+     * Матрица параллельной проекции на плоскость Z=0 (однородные координаты)
+     */
+    public static double[][] createParallelProjectionMatrix() {
+        double[][] matrix = new double[4][4];
+        matrix[0][0] = 1;  matrix[0][1] = 0;  matrix[0][2] = 0;  matrix[0][3] = 0;
+        matrix[1][0] = 0;  matrix[1][1] = 1;  matrix[1][2] = 0;  matrix[1][3] = 0;
+        matrix[2][0] = 0;  matrix[2][1] = 0;  matrix[2][2] = 0;  matrix[2][3] = 0;
+        matrix[3][0] = 0;  matrix[3][1] = 0;  matrix[3][2] = 0;  matrix[3][3] = 1;
+        return matrix;
+    }
+
+    /**
+     * Матрица перспективной проекции на плоскость Z=0 с центром в (0, 0, k)
+     * В однородных координатах: после умножения на матрицу получаем (x, y, z', w)
+     * где w = 1 - z/k. После деления на w: x' = x*k/(k-z), y' = y*k/(k-z)
+     */
+    public static double[][] createPerspectiveProjectionMatrix(double k) {
+        double[][] matrix = new double[4][4];
+        matrix[0][0] = 1;  matrix[0][1] = 0;  matrix[0][2] = 0;       matrix[0][3] = 0;
+        matrix[1][0] = 0;  matrix[1][1] = 1;  matrix[1][2] = 0;       matrix[1][3] = 0;
+        matrix[2][0] = 0;  matrix[2][1] = 0;  matrix[2][2] = 0;       matrix[2][3] = 0;
+        matrix[3][0] = 0;  matrix[3][1] = 0;  matrix[3][2] = -1.0/k;  matrix[3][3] = 1;
+        return matrix;
+    }
+
+    /**
+     * Матрица переноса (однородные координаты)
+     */
+    public static double[][] createTranslationMatrix(double tx, double ty, double tz) {
+        double[][] matrix = new double[4][4];
+        matrix[0][0] = 1;  matrix[0][1] = 0;  matrix[0][2] = 0;  matrix[0][3] = tx;
+        matrix[1][0] = 0;  matrix[1][1] = 1;  matrix[1][2] = 0;  matrix[1][3] = ty;
+        matrix[2][0] = 0;  matrix[2][1] = 0;  matrix[2][2] = 1;  matrix[2][3] = tz;
+        matrix[3][0] = 0;  matrix[3][1] = 0;  matrix[3][2] = 0;  matrix[3][3] = 1;
+        return matrix;
+    }
+
+    /**
+     * Умножение двух матриц 4x4
+     */
+    public static double[][] multiplyMatrices(double[][] a, double[][] b) {
+        double[][] result = new double[4][4];
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                result[i][j] = 0;
+                for (int k = 0; k < 4; k++) {
+                    result[i][j] += a[i][k] * b[k][j];
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Параллельная проекция на плоскость Z=0 (через матрицу однородных координат)
+     */
+    public static Point2D parallelProjection(Point3D p) {
+        double[][] projMatrix = createParallelProjectionMatrix();
+        Point4D result = transformPoint4D(p, projMatrix);
+        return result.toPoint2D();
+    }
+
+    /**
+     * Перспективная проекция с центром в (0, 0, k) (через матрицу однородных координат)
      */
     public static Point2D perspectiveProjection(Point3D p, double k) {
-        // Проекция точки (x, y, z) на плоскость Z=0
-        // Центр проекции: (0, 0, k)
-        if (Math.abs(k - p.z) < 0.001) {
-            // Точка лежит в плоскости центра проекции
-            return new Point2D(p.x * 1000, p.y * 1000);
-        }
-
-        double factor = k / (k - p.z);
-        return new Point2D(p.x * factor, p.y * factor);
+        double[][] projMatrix = createPerspectiveProjectionMatrix(k);
+        Point4D result = transformPoint4D(p, projMatrix);
+        return result.toPoint2D();
     }
 
     /**
@@ -496,12 +598,13 @@ public class Lab5 extends JFrame {
             Point3D rotationAxis = new Point3D(axisX, axisY, axisZ);
             double[][] rotationMatrix = createRotationMatrix(angle, rotationAxis);
 
-            Point3D[] transformedVertices = box.transform(rotationMatrix);
-
             // Параметры отрисовки
             double scale = 2.5;
 
             if (showParallel) {
+                // Для параллельной проекции - только вращение
+                Point3D[] transformedVertices = box.transform(rotationMatrix);
+
                 int offsetX = w / 4;
                 int offsetY = h / 2;
                 drawBox(img, transformedVertices, box, false, 0, removeHiddenLines, offsetX, offsetY, scale);
@@ -513,9 +616,19 @@ public class Lab5 extends JFrame {
             }
 
             if (showPerspective) {
+                // Для перспективы: вращение + смещение к камере (положительное z = ближе к наблюдателю)
+                // Комбинируем матрицы: сначала вращение, потом перенос
+                double[][] translationMatrix = createTranslationMatrix(0, 0, 50);
+                double[][] combinedMatrix = multiplyMatrices(translationMatrix, rotationMatrix);
+
+                Point3D[] perspectiveVertices = new Point3D[box.vertices.length];
+                for (int i = 0; i < box.vertices.length; i++) {
+                    perspectiveVertices[i] = transformPoint(box.vertices[i], combinedMatrix);
+                }
+
                 int offsetX = 3 * w / 4;
                 int offsetY = h / 2;
-                drawBox(img, transformedVertices, box, true, PERSPECTIVE_K, removeHiddenLines, offsetX, offsetY, scale);
+                drawBox(img, perspectiveVertices, box, true, PERSPECTIVE_K, removeHiddenLines, offsetX, offsetY, scale);
 
                 // Подпись
                 g.setColor(Color.BLACK);
@@ -554,6 +667,7 @@ public class Lab5 extends JFrame {
 
     public static void createDemoImages() {
         System.out.println("Creating demonstration images...\n");
+        System.out.println("Все преобразования выполняются через матрицы в однородных координатах 4x4.\n");
 
         Box box = new Box(100, 150, 80);
 
@@ -569,15 +683,19 @@ public class Lab5 extends JFrame {
         int offsetY = imgHeight / 2;
         double scale = 2.5;
 
+        // Матрица переноса для перспективы (положительное z = ближе к наблюдателю)
+        double[][] translationMatrix = createTranslationMatrix(0, 0, 10);
+
         for (int i = 0; i < angles.length; i++) {
             double angle = angles[i];
             String angleName = angleNames[i];
 
             // Матрица вращения
             double[][] rotationMatrix = createRotationMatrix(angle, axis);
-            Point3D[] transformed = box.transform(rotationMatrix);
 
-            // Параллельная проекция
+            // Параллельная проекция (только вращение)
+            Point3D[] transformedParallel = box.transform(rotationMatrix);
+
             BufferedImage parallelImg = new BufferedImage(imgWidth, imgHeight, BufferedImage.TYPE_BYTE_GRAY);
             WritableRaster raster1 = parallelImg.getRaster();
             for (int y = 0; y < imgHeight; y++) {
@@ -585,10 +703,16 @@ public class Lab5 extends JFrame {
                     raster1.setSample(x, y, 0, 255);
                 }
             }
-            drawBox(parallelImg, transformed, box, false, 0, true, offsetX, offsetY, scale);
+            drawBox(parallelImg, transformedParallel, box, false, 0, false, offsetX, offsetY, scale);
             saveImage(parallelImg, "res/lab5_parallel_" + angleName + ".png");
 
-            // Перспективная проекция
+            // Перспективная проекция (вращение + перенос)
+            double[][] combinedMatrix = multiplyMatrices(translationMatrix, rotationMatrix);
+            Point3D[] transformedPerspective = new Point3D[box.vertices.length];
+            for (int j = 0; j < box.vertices.length; j++) {
+                transformedPerspective[j] = transformPoint(box.vertices[j], combinedMatrix);
+            }
+
             BufferedImage perspectiveImg = new BufferedImage(imgWidth, imgHeight, BufferedImage.TYPE_BYTE_GRAY);
             WritableRaster raster2 = perspectiveImg.getRaster();
             for (int y = 0; y < imgHeight; y++) {
@@ -596,14 +720,21 @@ public class Lab5 extends JFrame {
                     raster2.setSample(x, y, 0, 255);
                 }
             }
-            drawBox(perspectiveImg, transformed, box, true, PERSPECTIVE_K, true, offsetX, offsetY, scale);
+            drawBox(perspectiveImg, transformedPerspective, box, true, PERSPECTIVE_K, false, offsetX, offsetY, scale);
             saveImage(perspectiveImg, "res/lab5_perspective_" + angleName + ".png");
         }
 
         // Сравнение с удалением невидимых линий и без
-        double angle = Math.PI / 4;
-        double[][] rotationMatrix = createRotationMatrix(angle, axis);
-        Point3D[] transformed = box.transform(rotationMatrix);
+        // Угол и ось подобраны так, чтобы задняя грань была полностью скрыта передней
+        double angle = Math.PI / 5;
+        Point3D comparisonAxis = new Point3D(1, 0.3, 0.2).normalize();
+        double[][] rotationMatrix = createRotationMatrix(angle, comparisonAxis);
+        double[][] combinedMatrix = multiplyMatrices(translationMatrix, rotationMatrix);
+
+        Point3D[] transformedPerspective = new Point3D[box.vertices.length];
+        for (int j = 0; j < box.vertices.length; j++) {
+            transformedPerspective[j] = transformPoint(box.vertices[j], combinedMatrix);
+        }
 
         // Без удаления
         BufferedImage noRemoval = new BufferedImage(imgWidth, imgHeight, BufferedImage.TYPE_BYTE_GRAY);
@@ -613,7 +744,7 @@ public class Lab5 extends JFrame {
                 raster3.setSample(x, y, 0, 255);
             }
         }
-        drawBox(noRemoval, transformed, box, true, PERSPECTIVE_K, false, offsetX, offsetY, scale);
+        drawBox(noRemoval, transformedPerspective, box, true, PERSPECTIVE_K, false, offsetX, offsetY, scale);
         saveImage(noRemoval, "res/lab5_no_removal.png");
 
         // С удалением
@@ -624,7 +755,7 @@ public class Lab5 extends JFrame {
                 raster4.setSample(x, y, 0, 255);
             }
         }
-        drawBox(withRemoval, transformed, box, true, PERSPECTIVE_K, true, offsetX, offsetY, scale);
+        drawBox(withRemoval, transformedPerspective, box, true, PERSPECTIVE_K, true, offsetX, offsetY, scale);
         saveImage(withRemoval, "res/lab5_with_removal.png");
 
         System.out.println("\nDemo images created successfully!");

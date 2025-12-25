@@ -313,6 +313,157 @@ public class Lab4 extends JFrame {
         return new Point[]{clippedP1, clippedP2};
     }
 
+    /**
+     * Алгоритм Сазерленда-Ходжмана для отсечения произвольного простого полигона
+     * выпуклым полигоном.
+     * @param subject отсекаемый полигон (произвольный простой)
+     * @param clip отсекающий полигон (должен быть выпуклым)
+     * @return результирующий полигон (может быть пустым)
+     */
+    public static Polygon sutherlandHodgmanClip(Polygon subject, Polygon clip) {
+        if (!isConvex(clip)) {
+            System.err.println("ОШИБКА: Отсекающий полигон должен быть выпуклым!");
+            return new Polygon("Empty");
+        }
+
+        List<Point> outputList = new ArrayList<>(subject.vertices);
+
+        int clipSize = clip.vertices.size();
+        for (int i = 0; i < clipSize; i++) {
+            if (outputList.isEmpty()) {
+                break;
+            }
+
+            List<Point> inputList = new ArrayList<>(outputList);
+            outputList.clear();
+
+            Point edgeStart = clip.vertices.get(i);
+            Point edgeEnd = clip.vertices.get((i + 1) % clipSize);
+
+            int inputSize = inputList.size();
+            for (int j = 0; j < inputSize; j++) {
+                Point current = inputList.get(j);
+                Point next = inputList.get((j + 1) % inputSize);
+
+                boolean currentInside = isInsideEdge(current, edgeStart, edgeEnd);
+                boolean nextInside = isInsideEdge(next, edgeStart, edgeEnd);
+
+                if (currentInside) {
+                    if (nextInside) {
+                        // Обе внутри - добавляем next
+                        outputList.add(next);
+                    } else {
+                        // current внутри, next снаружи - добавляем пересечение
+                        Point intersection = lineIntersection(current, next, edgeStart, edgeEnd);
+                        if (intersection != null) {
+                            outputList.add(intersection);
+                        }
+                    }
+                } else {
+                    if (nextInside) {
+                        // current снаружи, next внутри - добавляем пересечение и next
+                        Point intersection = lineIntersection(current, next, edgeStart, edgeEnd);
+                        if (intersection != null) {
+                            outputList.add(intersection);
+                        }
+                        outputList.add(next);
+                    }
+                    // Обе снаружи - ничего не добавляем
+                }
+            }
+        }
+
+        Polygon result = new Polygon("Clipped");
+        for (Point p : outputList) {
+            result.addVertex(p.x, p.y);
+        }
+        return result;
+    }
+
+    /**
+     * Проверяет, находится ли точка "внутри" относительно ребра (слева от направления ребра)
+     */
+    private static boolean isInsideEdge(Point p, Point edgeStart, Point edgeEnd) {
+        // Используем векторное произведение для определения стороны
+        double cross = (edgeEnd.x - edgeStart.x) * (p.y - edgeStart.y)
+                     - (edgeEnd.y - edgeStart.y) * (p.x - edgeStart.x);
+        return cross >= 0; // >= 0 означает слева или на линии
+    }
+
+    /**
+     * Находит точку пересечения двух отрезков
+     */
+    private static Point lineIntersection(Point p1, Point p2, Point p3, Point p4) {
+        double x1 = p1.x, y1 = p1.y;
+        double x2 = p2.x, y2 = p2.y;
+        double x3 = p3.x, y3 = p3.y;
+        double x4 = p4.x, y4 = p4.y;
+
+        double denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+        if (Math.abs(denom) < 1e-10) {
+            return null; // Линии параллельны
+        }
+
+        double t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+
+        return new Point(x1 + t * (x2 - x1), y1 + t * (y2 - y1));
+    }
+
+    /**
+     * Заполнение полигона цветом
+     */
+    public static void fillPolygon(BufferedImage img, Polygon polygon, int color) {
+        if (polygon.vertices.size() < 3) return;
+
+        WritableRaster raster = img.getRaster();
+        int width = img.getWidth();
+        int height = img.getHeight();
+
+        // Находим bounding box
+        double minX = Double.MAX_VALUE, maxX = Double.MIN_VALUE;
+        double minY = Double.MAX_VALUE, maxY = Double.MIN_VALUE;
+
+        for (Point p : polygon.vertices) {
+            minX = Math.min(minX, p.x);
+            maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y);
+            maxY = Math.max(maxY, p.y);
+        }
+
+        int iMinX = Math.max(0, (int) minX);
+        int iMaxX = Math.min(width - 1, (int) maxX);
+        int iMinY = Math.max(0, (int) minY);
+        int iMaxY = Math.min(height - 1, (int) maxY);
+
+        // Scanline fill с правилом even-odd
+        for (int y = iMinY; y <= iMaxY; y++) {
+            for (int x = iMinX; x <= iMaxX; x++) {
+                if (isPointInPolygon(x, y, polygon)) {
+                    raster.setSample(x, y, 0, color);
+                }
+            }
+        }
+    }
+
+    /**
+     * Проверка принадлежности точки полигону (even-odd rule)
+     */
+    private static boolean isPointInPolygon(int x, int y, Polygon polygon) {
+        int n = polygon.vertices.size();
+        boolean inside = false;
+
+        for (int i = 0, j = n - 1; i < n; j = i++) {
+            Point pi = polygon.vertices.get(i);
+            Point pj = polygon.vertices.get(j);
+
+            if (((pi.y > y) != (pj.y > y)) &&
+                (x < (pj.x - pi.x) * (y - pi.y) / (pj.y - pi.y) + pi.x)) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
     public static boolean saveImage(BufferedImage img, String filepath) {
         try {
             File outputFile = new File(filepath);
@@ -664,7 +815,116 @@ public class Lab4 extends JFrame {
 
         saveImage(test10, "res/clip_10_various.png");
 
-        System.out.println("\nВсе тесты завершены! Создано 13 изображений.");
+        // ========== ЧАСТЬ 3: ОТСЕЧЕНИЕ ПОЛИГОНОВ (САЗЕРЛЕНД-ХОДЖМАН) ==========
+        System.out.println("\nЧАСТЬ 3: Алгоритм Сазерленда-Ходжмана (отсечение полигонов)\n");
+
+        // Тест 1: Звезда отсекается квадратом
+        System.out.println("Тест 1: Звезда, отсечённая квадратом");
+        BufferedImage polyClip1 = createEmptyImage(500, 500);
+
+        // Создаём звезду (невыпуклый полигон)
+        Polygon star = new Polygon("Star");
+        int starCx = 250, starCy = 250;
+        for (int i = 0; i < 10; i++) {
+            double angle = -Math.PI / 2 + i * Math.PI / 5;
+            int r = (i % 2 == 0) ? 200 : 80;
+            star.addVertex(starCx + r * Math.cos(angle), starCy + r * Math.sin(angle));
+        }
+
+        // Отсекающий квадрат
+        Polygon clipSquare = new Polygon("ClipSquare");
+        clipSquare.addVertex(100, 100);
+        clipSquare.addVertex(400, 100);
+        clipSquare.addVertex(400, 400);
+        clipSquare.addVertex(100, 400);
+
+        // Выполняем отсечение
+        Polygon clippedStar = sutherlandHodgmanClip(star, clipSquare);
+
+        // Рисуем результат
+        fillPolygon(polyClip1, clippedStar, 200);  // Заполняем результат серым
+        drawPolygon(polyClip1, clipSquare, 0);      // Контур отсекающего
+        drawPolygon(polyClip1, star, 150);          // Исходная звезда пунктиром
+        drawPolygon(polyClip1, clippedStar, 0);     // Результат чёрным
+        saveImage(polyClip1, "res/polygon_clip_star_by_square.png");
+        System.out.println("   Вершин до: " + star.vertices.size() + ", после: " + clippedStar.vertices.size());
+
+        // Тест 2: Большой прямоугольник отсекается шестиугольником
+        System.out.println("Тест 2: Прямоугольник, отсечённый шестиугольником");
+        BufferedImage polyClip2 = createEmptyImage(500, 500);
+
+        Polygon bigRect = new Polygon("BigRect");
+        bigRect.addVertex(50, 150);
+        bigRect.addVertex(450, 150);
+        bigRect.addVertex(450, 350);
+        bigRect.addVertex(50, 350);
+
+        Polygon clipHex = new Polygon("ClipHex");
+        for (int i = 0; i < 6; i++) {
+            double angle = i * Math.PI / 3;
+            clipHex.addVertex(250 + 150 * Math.cos(angle), 250 + 150 * Math.sin(angle));
+        }
+
+        Polygon clippedRect = sutherlandHodgmanClip(bigRect, clipHex);
+
+        fillPolygon(polyClip2, clippedRect, 200);
+        drawPolygon(polyClip2, clipHex, 0);
+        drawPolygon(polyClip2, bigRect, 150);
+        drawPolygon(polyClip2, clippedRect, 0);
+        saveImage(polyClip2, "res/polygon_clip_rect_by_hexagon.png");
+        System.out.println("   Вершин до: " + bigRect.vertices.size() + ", после: " + clippedRect.vertices.size());
+
+        // Тест 3: Треугольник отсекается треугольником
+        System.out.println("Тест 3: Треугольник, отсечённый треугольником");
+        BufferedImage polyClip3 = createEmptyImage(500, 500);
+
+        Polygon tri1 = new Polygon("Triangle1");
+        tri1.addVertex(100, 400);
+        tri1.addVertex(400, 400);
+        tri1.addVertex(250, 100);
+
+        Polygon tri2 = new Polygon("Triangle2");
+        tri2.addVertex(100, 150);
+        tri2.addVertex(400, 150);
+        tri2.addVertex(250, 450);
+
+        Polygon clippedTri = sutherlandHodgmanClip(tri1, tri2);
+
+        fillPolygon(polyClip3, clippedTri, 200);
+        drawPolygon(polyClip3, tri2, 0);
+        drawPolygon(polyClip3, tri1, 150);
+        drawPolygon(polyClip3, clippedTri, 0);
+        saveImage(polyClip3, "res/polygon_clip_tri_by_tri.png");
+        System.out.println("   Вершин до: " + tri1.vertices.size() + ", после: " + clippedTri.vertices.size());
+
+        // Тест 4: L-образный полигон отсекается кругом (аппроксимация)
+        System.out.println("Тест 4: L-образный полигон, отсечённый восьмиугольником");
+        BufferedImage polyClip4 = createEmptyImage(500, 500);
+
+        Polygon lShape = new Polygon("L-Shape");
+        lShape.addVertex(100, 100);
+        lShape.addVertex(250, 100);
+        lShape.addVertex(250, 250);
+        lShape.addVertex(400, 250);
+        lShape.addVertex(400, 400);
+        lShape.addVertex(100, 400);
+
+        Polygon clipOct = new Polygon("Octagon");
+        for (int i = 0; i < 8; i++) {
+            double angle = i * Math.PI / 4;
+            clipOct.addVertex(250 + 180 * Math.cos(angle), 250 + 180 * Math.sin(angle));
+        }
+
+        Polygon clippedL = sutherlandHodgmanClip(lShape, clipOct);
+
+        fillPolygon(polyClip4, clippedL, 200);
+        drawPolygon(polyClip4, clipOct, 0);
+        drawPolygon(polyClip4, lShape, 150);
+        drawPolygon(polyClip4, clippedL, 0);
+        saveImage(polyClip4, "res/polygon_clip_L_by_octagon.png");
+        System.out.println("   Вершин до: " + lShape.vertices.size() + ", после: " + clippedL.vertices.size());
+
+        System.out.println("\nВсе тесты завершены!");
         System.out.println("\n=== Запуск GUI ===\n");
 
         SwingUtilities.invokeLater(() -> {
