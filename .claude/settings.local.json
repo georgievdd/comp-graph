@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(javac:*)",
+      "Bash(powershell -Command \"javac -encoding UTF-8 Lab5.java 2>&1\")",
+      "Bash(ls:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(magick:*)",
+      "Bash(where javac:*)",
+      "Bash(java:*)"
+    ]
+  }
+}

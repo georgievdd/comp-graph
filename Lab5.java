@@ -7,6 +7,7 @@ import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -37,6 +38,31 @@ public class Lab5 extends JFrame {
     private boolean showPerspective = true;
     private boolean removeHiddenLines = true;
     private boolean animate = true;
+
+    // === Дополнительное задание: два кубоида на орбите ===
+    private boolean extraMode = false;  // Переключатель режима
+
+    // Параметры орбиты
+    private double orbitAngle = 0.0;
+    private static final double ORBIT_RADIUS = 180.0;
+
+    // Вращение каждого кубоида вокруг своей оси
+    private double rotAngle1 = 0.0;
+    private double rotAngle2 = 0.0;
+    private Point3D axis1 = new Point3D(1, 1, 0).normalize();  // Ось кубоида 1
+    private Point3D axis2 = new Point3D(0, 1, 1).normalize();  // Ось кубоида 2
+
+    // Два цветных кубоида
+    private ColoredBox box1;
+    private ColoredBox box2;
+
+    // Параметры двухточечной перспективы
+    private static final double PERSPECTIVE_DX = 400.0;  // Точка схода по X
+    private static final double PERSPECTIVE_DY = 400.0;  // Точка схода по Y
+    private static final double PERSPECTIVE_DZ = 300.0;  // Точка схода по Z
+
+    // Показывать рёбра
+    private boolean showEdges = true;
 
     /**
      * 3D точка/вектор
@@ -249,6 +275,48 @@ public class Lab5 extends JFrame {
         }
     }
 
+    /**
+     * Цветной параллелепипед с уникальными цветами граней
+     */
+    static class ColoredBox extends Box {
+        Color[] faceColors;
+
+        public ColoredBox(double width, double height, double depth, Color[] colors) {
+            super(width, height, depth);
+            this.faceColors = colors;
+        }
+
+        /**
+         * Создаёт кубоид с тёплыми цветами (красный, оранжевый, жёлтый...)
+         */
+        public static ColoredBox createWarmBox(double w, double h, double d) {
+            Color[] colors = {
+                new Color(220, 50, 50),    // Красный (низ)
+                new Color(50, 180, 50),    // Зелёный (верх)
+                new Color(50, 100, 220),   // Синий (перед)
+                new Color(255, 140, 0),    // Оранжевый (зад)
+                new Color(255, 220, 50),   // Жёлтый (право)
+                new Color(160, 50, 200)    // Пурпурный (лево)
+            };
+            return new ColoredBox(w, h, d, colors);
+        }
+
+        /**
+         * Создаёт кубоид с холодными цветами (голубой, бирюзовый, фиолетовый...)
+         */
+        public static ColoredBox createCoolBox(double w, double h, double d) {
+            Color[] colors = {
+                new Color(0, 200, 200),    // Циан (низ)
+                new Color(200, 50, 200),   // Маджента (верх)
+                new Color(100, 255, 100),  // Лайм (перед)
+                new Color(255, 150, 180),  // Розовый (зад)
+                new Color(0, 150, 150),    // Бирюзовый (право)
+                new Color(255, 200, 100)   // Золотой (лево)
+            };
+            return new ColoredBox(w, h, d, colors);
+        }
+    }
+
     public static double[][] createRotationMatrix(double angle, Point3D axis) {
         // Нормализуем ось
         axis = axis.normalize();
@@ -326,6 +394,36 @@ public class Lab5 extends JFrame {
         matrix[1][0] = 0;  matrix[1][1] = 1;  matrix[1][2] = 0;       matrix[1][3] = 0;
         matrix[2][0] = 0;  matrix[2][1] = 0;  matrix[2][2] = 0;       matrix[2][3] = 0;
         matrix[3][0] = 0;  matrix[3][1] = 0;  matrix[3][2] = -1.0/k;  matrix[3][3] = 1;
+        return matrix;
+    }
+
+    /**
+     * Матрица двухточечной перспективной проекции с точками схода на XZ
+     * Точка схода 1: по оси X (на расстоянии dx)
+     * Точка схода 2: по оси Z (на расстоянии dz)
+     * Вертикальные линии (параллельные Y) остаются вертикальными
+     */
+    public static double[][] createTwoPointPerspectiveXZ(double dx, double dz) {
+        double[][] matrix = new double[4][4];
+        matrix[0][0] = 1;       matrix[0][1] = 0;  matrix[0][2] = 0;        matrix[0][3] = 0;
+        matrix[1][0] = 0;       matrix[1][1] = 1;  matrix[1][2] = 0;        matrix[1][3] = 0;
+        matrix[2][0] = 0;       matrix[2][1] = 0;  matrix[2][2] = 0;        matrix[2][3] = 0;
+        matrix[3][0] = -1.0/dx; matrix[3][1] = 0;  matrix[3][2] = -1.0/dz;  matrix[3][3] = 1;
+        return matrix;
+    }
+
+    /**
+     * Матрица двухточечной перспективной проекции с точками схода на YZ
+     * Точка схода 1: по оси Y (на расстоянии dy)
+     * Точка схода 2: по оси Z (на расстоянии dz)
+     * Горизонтальные линии (параллельные X) остаются горизонтальными
+     */
+    public static double[][] createTwoPointPerspectiveYZ(double dy, double dz) {
+        double[][] matrix = new double[4][4];
+        matrix[0][0] = 1;  matrix[0][1] = 0;        matrix[0][2] = 0;        matrix[0][3] = 0;
+        matrix[1][0] = 0;  matrix[1][1] = 1;        matrix[1][2] = 0;        matrix[1][3] = 0;
+        matrix[2][0] = 0;  matrix[2][1] = 0;        matrix[2][2] = 0;        matrix[2][3] = 0;
+        matrix[3][0] = 0;  matrix[3][1] = -1.0/dy;  matrix[3][2] = -1.0/dz;  matrix[3][3] = 1;
         return matrix;
     }
 
@@ -414,6 +512,185 @@ public class Lab5 extends JFrame {
             if (e2 < dx) {
                 err += dx;
                 y += sy;
+            }
+        }
+    }
+
+    /**
+     * Рисование цветной линии в RGB буфер
+     */
+    public static void drawColorLine(int[] pixels, int width, int height,
+                                      int x0, int y0, int x1, int y1, int rgb) {
+        if (x0 > x1 || (x0 == x1 && y0 > y1)) {
+            int temp;
+            temp = x0; x0 = x1; x1 = temp;
+            temp = y0; y0 = y1; y1 = temp;
+        }
+
+        int dx = x1 - x0;
+        int dy = y1 - y0;
+        int sx = 1;
+        int sy = dy >= 0 ? 1 : -1;
+        dy = Math.abs(dy);
+
+        int err = dx - dy;
+        int x = x0;
+        int y = y0;
+
+        while (true) {
+            if (x >= 0 && x < width && y >= 0 && y < height) {
+                pixels[y * width + x] = rgb;
+            }
+
+            if (x == x1 && y == y1) break;
+
+            int e2 = 2 * err;
+            if (e2 > -dy) {
+                err -= dy;
+                x += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                y += sy;
+            }
+        }
+    }
+
+    /**
+     * Заливка треугольника с Z-буфером
+     * Использует барицентрические координаты для интерполяции Z
+     */
+    public static void fillTriangleWithZBuffer(
+            double[] xPts, double[] yPts, double[] zPts,  // 3 вершины
+            int rgb,
+            int[] pixels, double[] zBuffer,
+            int width, int height) {
+
+        // Bounding box
+        int minX = (int) Math.floor(Math.min(xPts[0], Math.min(xPts[1], xPts[2])));
+        int maxX = (int) Math.ceil(Math.max(xPts[0], Math.max(xPts[1], xPts[2])));
+        int minY = (int) Math.floor(Math.min(yPts[0], Math.min(yPts[1], yPts[2])));
+        int maxY = (int) Math.ceil(Math.max(yPts[0], Math.max(yPts[1], yPts[2])));
+
+        // Clipping
+        minX = Math.max(0, minX);
+        maxX = Math.min(width - 1, maxX);
+        minY = Math.max(0, minY);
+        maxY = Math.min(height - 1, maxY);
+
+        // Предвычисления для барицентрических координат
+        double x0 = xPts[0], y0 = yPts[0], z0 = zPts[0];
+        double x1 = xPts[1], y1 = yPts[1], z1 = zPts[1];
+        double x2 = xPts[2], y2 = yPts[2], z2 = zPts[2];
+
+        double denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
+        if (Math.abs(denom) < 1e-10) return; // Вырожденный треугольник
+
+        for (int py = minY; py <= maxY; py++) {
+            for (int px = minX; px <= maxX; px++) {
+                // Барицентрические координаты
+                double w0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) / denom;
+                double w1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) / denom;
+                double w2 = 1 - w0 - w1;
+
+                // Проверка, внутри ли точка треугольника
+                if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                    // Интерполяция Z
+                    double z = w0 * z0 + w1 * z1 + w2 * z2;
+
+                    int idx = py * width + px;
+                    // Z-тест (меньше Z = ближе к камере)
+                    if (z < zBuffer[idx]) {
+                        zBuffer[idx] = z;
+                        pixels[idx] = rgb;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Заливка грани (4 вершины) с Z-буфером
+     * Разбивает грань на 2 треугольника
+     */
+    public static void fillFaceWithZBuffer(
+            Point2D[] pts2D, double[] zVals,  // 4 вершины
+            int rgb,
+            int[] pixels, double[] zBuffer,
+            int width, int height) {
+
+        // Треугольник 1: вершины 0, 1, 2
+        fillTriangleWithZBuffer(
+            new double[]{pts2D[0].x, pts2D[1].x, pts2D[2].x},
+            new double[]{pts2D[0].y, pts2D[1].y, pts2D[2].y},
+            new double[]{zVals[0], zVals[1], zVals[2]},
+            rgb, pixels, zBuffer, width, height
+        );
+
+        // Треугольник 2: вершины 0, 2, 3
+        fillTriangleWithZBuffer(
+            new double[]{pts2D[0].x, pts2D[2].x, pts2D[3].x},
+            new double[]{pts2D[0].y, pts2D[2].y, pts2D[3].y},
+            new double[]{zVals[0], zVals[2], zVals[3]},
+            rgb, pixels, zBuffer, width, height
+        );
+    }
+
+    /**
+     * Рендер цветного кубоида с Z-буфером
+     */
+    public static void renderColoredBox(
+            ColoredBox box,
+            Point3D[] vertices3D,
+            double[][] projMatrix,
+            int[] pixels, double[] zBuffer,
+            int width, int height,
+            int offsetX, int offsetY, double scale,
+            boolean drawEdges) {
+
+        // Проецируем вершины
+        Point2D[] projected = new Point2D[vertices3D.length];
+        double[] zValues = new double[vertices3D.length];
+
+        for (int i = 0; i < vertices3D.length; i++) {
+            Point4D p4 = transformPoint4D(vertices3D[i], projMatrix);
+            Point2D p2 = p4.toPoint2D();
+            projected[i] = new Point2D(p2.x * scale + offsetX, -p2.y * scale + offsetY);
+            zValues[i] = vertices3D[i].z; // Используем Z для буфера глубины
+        }
+
+        // Определяем направление взгляда (вдоль -Z)
+        Point3D viewDir = new Point3D(0, 0, -1);
+
+        // Рисуем грани (с back-face culling)
+        for (int f = 0; f < box.faces.length; f++) {
+            Face face = box.faces[f];
+
+            // Back-face culling
+            if (!face.isVisible(vertices3D, viewDir)) continue;
+
+            // Получаем 2D координаты вершин грани
+            Point2D[] facePts = new Point2D[4];
+            double[] faceZ = new double[4];
+            for (int i = 0; i < 4; i++) {
+                int vi = face.vertices[i];
+                facePts[i] = projected[vi];
+                faceZ[i] = zValues[vi];
+            }
+
+            // Заливка грани
+            int rgb = box.faceColors[f].getRGB();
+            fillFaceWithZBuffer(facePts, faceZ, rgb, pixels, zBuffer, width, height);
+        }
+
+        // Рисуем рёбра (опционально)
+        if (drawEdges) {
+            int edgeColor = 0xFF000000; // Чёрный
+            for (Edge edge : box.edges) {
+                Point2D p1 = projected[edge.v1];
+                Point2D p2 = projected[edge.v2];
+                drawColorLine(pixels, width, height,
+                    (int) p1.x, (int) p1.y, (int) p2.x, (int) p2.y, edgeColor);
             }
         }
     }
@@ -529,6 +806,10 @@ public class Lab5 extends JFrame {
         axisY = axis.y;
         axisZ = axis.z;
 
+        // Создаём два цветных кубоида для дополнительного задания
+        box1 = ColoredBox.createWarmBox(80, 100, 60);
+        box2 = ColoredBox.createCoolBox(70, 90, 70);
+
         DemoPanel panel = new DemoPanel();
         add(panel);
         startAnimation(panel);
@@ -549,6 +830,9 @@ public class Lab5 extends JFrame {
                         break;
                     case KeyEvent.VK_R:
                         angle = 0;
+                        orbitAngle = 0;
+                        rotAngle1 = 0;
+                        rotAngle2 = 0;
                         panel.repaint();
                         break;
                     case KeyEvent.VK_LEFT:
@@ -557,6 +841,16 @@ public class Lab5 extends JFrame {
                         break;
                     case KeyEvent.VK_RIGHT:
                         angle += 0.1;
+                        panel.repaint();
+                        break;
+                    case KeyEvent.VK_E:
+                        // Переключение в режим дополнительного задания
+                        extraMode = !extraMode;
+                        panel.repaint();
+                        break;
+                    case KeyEvent.VK_D:
+                        // Показать/скрыть рёбра
+                        showEdges = !showEdges;
                         panel.repaint();
                         break;
                 }
@@ -570,6 +864,10 @@ public class Lab5 extends JFrame {
         animationTimer = new Timer(16, e -> {
             if (animate) {
                 angle += 0.02;
+                // Обновление параметров для дополнительного задания
+                orbitAngle += 0.015;
+                rotAngle1 += 0.03;
+                rotAngle2 += 0.02;
                 panel.repaint();
             }
         });
@@ -585,6 +883,16 @@ public class Lab5 extends JFrame {
             int w = getWidth();
             int h = getHeight();
 
+            if (extraMode) {
+                // === Режим дополнительного задания ===
+                renderExtraMode(g, w, h);
+            } else {
+                // === Стандартный режим ===
+                renderStandardMode(g, w, h);
+            }
+        }
+
+        private void renderStandardMode(Graphics g, int w, int h) {
             BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_BYTE_GRAY);
             WritableRaster raster = img.getRaster();
             for (int y = 0; y < h; y++) {
@@ -598,26 +906,20 @@ public class Lab5 extends JFrame {
             Point3D rotationAxis = new Point3D(axisX, axisY, axisZ);
             double[][] rotationMatrix = createRotationMatrix(angle, rotationAxis);
 
-            // Параметры отрисовки
             double scale = 2.5;
 
             if (showParallel) {
-                // Для параллельной проекции - только вращение
                 Point3D[] transformedVertices = box.transform(rotationMatrix);
-
                 int offsetX = w / 4;
                 int offsetY = h / 2;
                 drawBox(img, transformedVertices, box, false, 0, removeHiddenLines, offsetX, offsetY, scale);
 
-                // Подпись
                 g.setColor(Color.BLACK);
                 g.setFont(new Font("Monospaced", Font.BOLD, 14));
                 g.drawString("Parallel Projection", offsetX - 80, 30);
             }
 
             if (showPerspective) {
-                // Для перспективы: вращение + смещение к камере (положительное z = ближе к наблюдателю)
-                // Комбинируем матрицы: сначала вращение, потом перенос
                 double[][] translationMatrix = createTranslationMatrix(0, 0, 50);
                 double[][] combinedMatrix = multiplyMatrices(translationMatrix, rotationMatrix);
 
@@ -630,7 +932,6 @@ public class Lab5 extends JFrame {
                 int offsetY = h / 2;
                 drawBox(img, perspectiveVertices, box, true, PERSPECTIVE_K, removeHiddenLines, offsetX, offsetY, scale);
 
-                // Подпись
                 g.setColor(Color.BLACK);
                 g.setFont(new Font("Monospaced", Font.BOLD, 14));
                 g.drawString("Perspective Projection (k=" + (int)PERSPECTIVE_K + ")", offsetX - 120, 30);
@@ -638,17 +939,136 @@ public class Lab5 extends JFrame {
 
             g.drawImage(img, 0, 0, null);
 
+            // Инструкции
             g.setColor(Color.BLACK);
             g.setFont(new Font("Monospaced", Font.PLAIN, 12));
-            int infoY = h - 100;
+            int infoY = h - 120;
             g.drawString("Controls:", 20, infoY);
             g.drawString("  SPACE - Toggle animation: " + (animate ? "ON" : "OFF"), 20, infoY + 20);
             g.drawString("  H - Toggle hidden line removal: " + (removeHiddenLines ? "ON" : "OFF"), 20, infoY + 40);
             g.drawString("  R - Reset rotation", 20, infoY + 60);
             g.drawString("  LEFT/RIGHT - Manual rotation", 20, infoY + 80);
+            g.drawString("  E - Switch to EXTRA MODE (two cuboids)", 20, infoY + 100);
 
             g.drawString(String.format("Rotation angle: %.2f rad", angle), w - 250, infoY);
             g.drawString(String.format("Rotation axis: [%.2f, %.2f, %.2f]", axisX, axisY, axisZ), w - 250, infoY + 20);
+        }
+
+        private void renderExtraMode(Graphics g, int w, int h) {
+            // Создаём RGB буфер и Z-буфер
+            int[] pixels = new int[w * h];
+            double[] zBuffer = new double[w * h];
+
+            // Инициализация буферов
+            int bgColor = 0xFFE8E8F0;  // Светло-серый фон
+            Arrays.fill(pixels, bgColor);
+            Arrays.fill(zBuffer, Double.MAX_VALUE);
+
+            double baseScale = 2.0;
+            int centerX = w / 2;
+            int centerY = h / 2;
+
+            // Глубина для расчёта масштаба (расстояние от камеры)
+            final double cameraDepth = 400.0;
+
+            // Позиции кубоидов на орбите
+            double x1 = ORBIT_RADIUS * Math.cos(orbitAngle);
+            double z1 = ORBIT_RADIUS * Math.sin(orbitAngle);
+            double x2 = ORBIT_RADIUS * Math.cos(orbitAngle + Math.PI);
+            double z2 = ORBIT_RADIUS * Math.sin(orbitAngle + Math.PI);
+
+            // Масштабирование на основе Z-позиции (ближе = больше, дальше = меньше)
+            // z < 0 означает ближе к камере, z > 0 - дальше
+            double scale1 = baseScale * (cameraDepth / (cameraDepth + z1));
+            double scale2 = baseScale * (cameraDepth / (cameraDepth + z2));
+
+            // Трансформации для кубоида 1
+            double[][] rot1 = createRotationMatrix(rotAngle1, axis1);
+            double[][] trans1 = createTranslationMatrix(x1, 0, z1);
+            double[][] combined1 = multiplyMatrices(trans1, rot1);
+            Point3D[] verts1 = new Point3D[box1.vertices.length];
+            for (int i = 0; i < box1.vertices.length; i++) {
+                verts1[i] = transformPoint(box1.vertices[i], combined1);
+            }
+
+            // Трансформации для кубоида 2
+            double[][] rot2 = createRotationMatrix(rotAngle2, axis2);
+            double[][] trans2 = createTranslationMatrix(x2, 0, z2);
+            double[][] combined2 = multiplyMatrices(trans2, rot2);
+            Point3D[] verts2 = new Point3D[box2.vertices.length];
+            for (int i = 0; i < box2.vertices.length; i++) {
+                verts2[i] = transformPoint(box2.vertices[i], combined2);
+            }
+
+            // Матрицы двухточечной перспективы
+            double[][] projXZ = createTwoPointPerspectiveXZ(PERSPECTIVE_DX, PERSPECTIVE_DZ);
+            double[][] projYZ = createTwoPointPerspectiveYZ(PERSPECTIVE_DY, PERSPECTIVE_DZ);
+
+            // Рендерим кубоиды в порядке от дальнего к ближнему (painter's algorithm + Z-buffer)
+            // Это обеспечивает правильное заслонение
+            if (z1 > z2) {
+                // Кубоид 1 дальше - рисуем его первым
+                renderColoredBox(box1, verts1, projXZ, pixels, zBuffer, w, h, centerX, centerY, scale1, showEdges);
+                renderColoredBox(box2, verts2, projYZ, pixels, zBuffer, w, h, centerX, centerY, scale2, showEdges);
+            } else {
+                // Кубоид 2 дальше - рисуем его первым
+                renderColoredBox(box2, verts2, projYZ, pixels, zBuffer, w, h, centerX, centerY, scale2, showEdges);
+                renderColoredBox(box1, verts1, projXZ, pixels, zBuffer, w, h, centerX, centerY, scale1, showEdges);
+            }
+
+            // Создаём изображение из буфера
+            BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+            img.setRGB(0, 0, w, h, pixels, 0, w);
+            g.drawImage(img, 0, 0, null);
+
+            // Заголовок и информация
+            g.setColor(Color.BLACK);
+            g.setFont(new Font("Monospaced", Font.BOLD, 16));
+            g.drawString("EXTRA MODE: Two Cuboids with Two-Point Perspective", 20, 30);
+
+            g.setFont(new Font("Monospaced", Font.PLAIN, 12));
+            g.drawString("Cuboid 1 (warm colors): Two-point perspective on XZ plane", 20, 55);
+            g.drawString("Cuboid 2 (cool colors): Two-point perspective on YZ plane", 20, 75);
+
+            // Инструкции
+            int infoY = h - 140;
+            g.drawString("Controls:", 20, infoY);
+            g.drawString("  SPACE - Toggle animation: " + (animate ? "ON" : "OFF"), 20, infoY + 20);
+            g.drawString("  E - Switch to STANDARD MODE", 20, infoY + 40);
+            g.drawString("  D - Toggle edges: " + (showEdges ? "ON" : "OFF"), 20, infoY + 60);
+            g.drawString("  R - Reset all rotations", 20, infoY + 80);
+
+            // Параметры (вычисляем текущие масштабы для отображения)
+            double dispZ1 = ORBIT_RADIUS * Math.sin(orbitAngle);
+            double dispZ2 = ORBIT_RADIUS * Math.sin(orbitAngle + Math.PI);
+            double dispScale1 = 2.0 * (cameraDepth / (cameraDepth + dispZ1));
+            double dispScale2 = 2.0 * (cameraDepth / (cameraDepth + dispZ2));
+
+            g.drawString(String.format("Orbit angle: %.2f rad", orbitAngle), w - 280, infoY);
+            g.drawString(String.format("Cuboid 1: z=%.0f, scale=%.2f", dispZ1, dispScale1), w - 280, infoY + 20);
+            g.drawString(String.format("Cuboid 2: z=%.0f, scale=%.2f", dispZ2, dispScale2), w - 280, infoY + 40);
+            g.drawString(String.format("Cuboid 1 axis: [%.1f, %.1f, %.1f]", axis1.x, axis1.y, axis1.z), w - 280, infoY + 60);
+            g.drawString(String.format("Cuboid 2 axis: [%.1f, %.1f, %.1f]", axis2.x, axis2.y, axis2.z), w - 280, infoY + 80);
+
+            // Легенда цветов
+            int legendX = w - 150;
+            int legendY = 100;
+            g.setFont(new Font("Monospaced", Font.BOLD, 11));
+            g.drawString("Cuboid 1:", legendX, legendY);
+            for (int i = 0; i < 6; i++) {
+                g.setColor(box1.faceColors[i]);
+                g.fillRect(legendX, legendY + 5 + i * 15, 20, 12);
+                g.setColor(Color.BLACK);
+                g.drawRect(legendX, legendY + 5 + i * 15, 20, 12);
+            }
+
+            g.drawString("Cuboid 2:", legendX + 50, legendY);
+            for (int i = 0; i < 6; i++) {
+                g.setColor(box2.faceColors[i]);
+                g.fillRect(legendX + 50, legendY + 5 + i * 15, 20, 12);
+                g.setColor(Color.BLACK);
+                g.drawRect(legendX + 50, legendY + 5 + i * 15, 20, 12);
+            }
         }
     }
 
