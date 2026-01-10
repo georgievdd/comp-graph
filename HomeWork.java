@@ -173,6 +173,54 @@ public class HomeWork {
         return new Point(x, y);
     }
 
+    static int estimateSegments(Point p0, Point p1, Point t0, Point t1) {
+        // Расстояние между контрольными точками
+        double dx = p1.x - p0.x;
+        double dy = p1.y - p0.y;
+        double chordLength = Math.sqrt(dx * dx + dy * dy);
+
+        // Длины касательных векторов (влияют на кривизну)
+        double t0Len = Math.sqrt(t0.x * t0.x + t0.y * t0.y);
+        double t1Len = Math.sqrt(t1.x * t1.x + t1.y * t1.y);
+
+        // Оценка кривизны: чем больше касательные относительно хорды, тем больше кривизна
+        double tangentFactor = (t0Len + t1Len) / 2.0;
+
+        // Угол между касательными (дополнительный фактор кривизны)
+        double dot = (t0.x * t1.x + t0.y * t1.y) / (t0Len * t1Len + 1e-10);
+        double angleFactor = 1.0 + (1.0 - Math.abs(dot)); // 1.0 для параллельных, 2.0 для перпендикулярных
+
+        // Адаптивное число сегментов:
+        // - Базовое значение пропорционально длине хорды
+        // - Увеличивается с ростом касательных векторов
+        // - Учитывает угол между касательными
+        double baseSegments = chordLength / 5.0;  // 1 сегмент на каждые 5 пикселей
+        double curvatureBonus = tangentFactor / 20.0;  // Бонус за кривизну
+
+        int segments = (int) Math.ceil((baseSegments + curvatureBonus) * angleFactor);
+
+        // Ограничиваем разумными пределами
+        return Math.max(10, Math.min(200, segments));
+    }
+
+    static List<Point> drawHermiteCurve(Point[] points, Point[] tangents) {
+        List<Point> curve = new ArrayList<>();
+
+        for (int i = 0; i < points.length - 1; i++) {
+            // Адаптивно вычисляем число сегментов для каждого участка кривой
+            int steps = estimateSegments(points[i], points[i+1], tangents[i], tangents[i+1]);
+
+            for (int j = 0; j <= steps; j++) {
+                double t = (double) j / steps;
+                Point p = hermitePoint(points[i], points[i+1], tangents[i], tangents[i+1], t);
+                curve.add(p);
+            }
+        }
+
+        return curve;
+    }
+
+    // Перегрузка для обратной совместимости
     static List<Point> drawHermiteCurve(Point[] points, Point[] tangents, int steps) {
         List<Point> curve = new ArrayList<>();
 
@@ -489,6 +537,195 @@ public class HomeWork {
             drawPolygon(result2, hexagon, 50);
             saveImage(result2, "res/hw_clip_tri_hex_result.png");
         }
+
+        // === ДОПОЛНИТЕЛЬНЫЕ ТЕСТЫ ===
+
+        // Тест 3: Произвольная ориентация полигонов (CCW и CW)
+        System.out.println("  Тест 3: Полигоны с разной ориентацией (CCW и CW)");
+        demonstrateOrientationTest(width, height);
+
+        // Тест 4: Полигон полностью внутри другого
+        System.out.println("  Тест 4: Полигон полностью внутри другого");
+        demonstrateInsideTest(width, height);
+
+        // Тест 5: Наоборот - внешний полигон меньше (clip внутри subject)
+        System.out.println("  Тест 5: Отсекающий полигон внутри отсекаемого");
+        demonstrateClipInsideSubjectTest(width, height);
+
+        // Тест 6: Нет пересечений и нет вложенности
+        System.out.println("  Тест 6: Полигоны не пересекаются и не вложены");
+        demonstrateNoIntersectionTest(width, height);
+    }
+
+    static void demonstrateOrientationTest(int width, int height) {
+        // Квадрат CCW (против часовой стрелки)
+        Polygon squareCCW = new Polygon("Square CCW");
+        squareCCW.addVertex(150, 150);
+        squareCCW.addVertex(150, 400);
+        squareCCW.addVertex(400, 400);
+        squareCCW.addVertex(400, 150);
+
+        // Ромб CW (по часовой стрелке)
+        Polygon diamondCW = new Polygon("Diamond CW");
+        diamondCW.addVertex(300, 100);
+        diamondCW.addVertex(450, 275);
+        diamondCW.addVertex(300, 450);
+        diamondCW.addVertex(150, 275);
+
+        BufferedImage imgSetup = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D g = imgSetup.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, width, height);
+        g.dispose();
+
+        fillPolygon(imgSetup, squareCCW, 200);
+        drawPolygon(imgSetup, squareCCW, 100);
+        drawPolygon(imgSetup, diamondCW, 0);
+        saveImage(imgSetup, "res/hw_clip_orientation_setup.png");
+
+        Polygon clipped = weilerAthertonClip(squareCCW, diamondCW);
+        if (clipped != null) {
+            BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+            Graphics2D gr = result.createGraphics();
+            gr.setColor(Color.WHITE);
+            gr.fillRect(0, 0, width, height);
+            gr.dispose();
+
+            fillPolygon(result, clipped, 150);
+            drawPolygon(result, clipped, 0);
+            drawPolygon(result, diamondCW, 50);
+            saveImage(result, "res/hw_clip_orientation_result.png");
+        }
+    }
+
+    static void demonstrateInsideTest(int width, int height) {
+        // Большой квадрат (внешний)
+        Polygon outerSquare = new Polygon("Outer Square");
+        outerSquare.addVertex(100, 100);
+        outerSquare.addVertex(500, 100);
+        outerSquare.addVertex(500, 500);
+        outerSquare.addVertex(100, 500);
+
+        // Маленький квадрат полностью внутри большого
+        Polygon innerSquare = new Polygon("Inner Square");
+        innerSquare.addVertex(200, 200);
+        innerSquare.addVertex(400, 200);
+        innerSquare.addVertex(400, 400);
+        innerSquare.addVertex(200, 400);
+
+        BufferedImage imgSetup = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D g = imgSetup.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, width, height);
+        g.dispose();
+
+        fillPolygon(imgSetup, outerSquare, 220);
+        drawPolygon(imgSetup, outerSquare, 100);
+        fillPolygon(imgSetup, innerSquare, 180);
+        drawPolygon(imgSetup, innerSquare, 0);
+        saveImage(imgSetup, "res/hw_clip_inside_setup.png");
+
+        // Subject = внешний, Clip = внутренний -> результат = внутренний
+        Polygon clipped = weilerAthertonClip(outerSquare, innerSquare);
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D gr = result.createGraphics();
+        gr.setColor(Color.WHITE);
+        gr.fillRect(0, 0, width, height);
+        gr.dispose();
+
+        if (clipped != null) {
+            fillPolygon(result, clipped, 150);
+            drawPolygon(result, clipped, 0);
+        }
+        drawPolygon(result, innerSquare, 50);
+        saveImage(result, "res/hw_clip_inside_result.png");
+    }
+
+    static void demonstrateClipInsideSubjectTest(int width, int height) {
+        // Маленький треугольник (subject)
+        Polygon smallTri = new Polygon("Small Triangle");
+        smallTri.addVertex(300, 200);
+        smallTri.addVertex(400, 400);
+        smallTri.addVertex(200, 400);
+
+        // Большой шестиугольник, который полностью содержит треугольник (clip)
+        Polygon bigHex = new Polygon("Big Hexagon");
+        double cx = 300, cy = 300, r = 250;
+        for (int i = 0; i < 6; i++) {
+            double angle = i * Math.PI / 3 - Math.PI / 6;
+            bigHex.addVertex(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+        }
+
+        BufferedImage imgSetup = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D g = imgSetup.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, width, height);
+        g.dispose();
+
+        fillPolygon(imgSetup, smallTri, 200);
+        drawPolygon(imgSetup, smallTri, 100);
+        drawPolygon(imgSetup, bigHex, 0);
+        saveImage(imgSetup, "res/hw_clip_subj_inside_setup.png");
+
+        // Subject полностью внутри Clip -> результат = subject
+        Polygon clipped = weilerAthertonClip(smallTri, bigHex);
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D gr = result.createGraphics();
+        gr.setColor(Color.WHITE);
+        gr.fillRect(0, 0, width, height);
+        gr.dispose();
+
+        if (clipped != null) {
+            fillPolygon(result, clipped, 150);
+            drawPolygon(result, clipped, 0);
+        }
+        drawPolygon(result, bigHex, 50);
+        saveImage(result, "res/hw_clip_subj_inside_result.png");
+    }
+
+    static void demonstrateNoIntersectionTest(int width, int height) {
+        // Квадрат слева
+        Polygon leftSquare = new Polygon("Left Square");
+        leftSquare.addVertex(50, 200);
+        leftSquare.addVertex(200, 200);
+        leftSquare.addVertex(200, 400);
+        leftSquare.addVertex(50, 400);
+
+        // Квадрат справа - не пересекается с левым
+        Polygon rightSquare = new Polygon("Right Square");
+        rightSquare.addVertex(400, 200);
+        rightSquare.addVertex(550, 200);
+        rightSquare.addVertex(550, 400);
+        rightSquare.addVertex(400, 400);
+
+        BufferedImage imgSetup = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D g = imgSetup.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, width, height);
+        g.dispose();
+
+        fillPolygon(imgSetup, leftSquare, 200);
+        drawPolygon(imgSetup, leftSquare, 100);
+        fillPolygon(imgSetup, rightSquare, 180);
+        drawPolygon(imgSetup, rightSquare, 0);
+        saveImage(imgSetup, "res/hw_clip_no_intersect_setup.png");
+
+        // Нет пересечения -> результат = null (пустое пересечение)
+        Polygon clipped = weilerAthertonClip(leftSquare, rightSquare);
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D gr = result.createGraphics();
+        gr.setColor(Color.WHITE);
+        gr.fillRect(0, 0, width, height);
+        gr.setColor(Color.LIGHT_GRAY);
+        gr.setFont(new Font("Arial", Font.BOLD, 24));
+        gr.drawString("No intersection - empty result", 120, 300);
+        gr.dispose();
+
+        if (clipped != null && clipped.vertices.size() > 0) {
+            fillPolygon(result, clipped, 150);
+            drawPolygon(result, clipped, 0);
+        }
+        saveImage(result, "res/hw_clip_no_intersect_result.png");
     }
 
     static void demonstrateHermiteCurve() {
@@ -513,8 +750,15 @@ public class HomeWork {
             new Point(50, 0)       // Конечная касательная
         };
 
-        // Строим кривую
-        List<Point> curve = drawHermiteCurve(points, tangents, 50);
+        // Выводим информацию об адаптивном числе сегментов
+        System.out.println("  Адаптивное число сегментов для каждого участка:");
+        for (int i = 0; i < points.length - 1; i++) {
+            int segs = estimateSegments(points[i], points[i+1], tangents[i], tangents[i+1]);
+            System.out.printf("    Участок %d-%d: %d сегментов%n", i, i+1, segs);
+        }
+
+        // Строим кривую с адаптивным числом сегментов
+        List<Point> curve = drawHermiteCurve(points, tangents);
 
         // Создаем изображение
         BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
@@ -578,16 +822,114 @@ public class HomeWork {
             g2.drawLine((int)p.x, (int)p.y, (int)(p.x + t.x), (int)(p.y + t.y));
         }
 
-        // Заголовок
+        // Заголовок и информация об адаптивных сегментах
         g2.setColor(Color.BLACK);
         g2.setFont(new Font("Arial", Font.BOLD, 16));
-        g2.drawString("Composite Cubic Hermite Curve", 20, 30);
+        g2.drawString("Composite Cubic Hermite Curve (Adaptive Segments)", 20, 30);
         g2.setFont(new Font("Arial", Font.PLAIN, 12));
         g2.drawString("Red dots: control points", 20, 50);
         g2.drawString("Blue dashed: tangent vectors", 20, 70);
 
+        // Показываем число сегментов для каждого участка
+        g2.setColor(new Color(0, 128, 0));
+        int yOffset = 90;
+        for (int i = 0; i < points.length - 1; i++) {
+            int segs = estimateSegments(points[i], points[i+1], tangents[i], tangents[i+1]);
+            g2.drawString("Segment P" + i + "-P" + (i+1) + ": " + segs + " subdivisions", 20, yOffset);
+            yOffset += 15;
+        }
+
         g2.dispose();
         saveImage(imgLabeled, "res/hw_hermite_curve_labeled.png");
+
+        // Дополнительный тест: демонстрация адаптивности с разными масштабами
+        demonstrateAdaptiveHermite(width, height);
+    }
+
+    static void demonstrateAdaptiveHermite(int width, int height) {
+        // Тест 1: Короткий сегмент с малыми касательными (мало сегментов)
+        Point[] points1 = {
+            new Point(100, 150),
+            new Point(200, 150)
+        };
+        Point[] tangents1 = {
+            new Point(30, 0),
+            new Point(30, 0)
+        };
+
+        // Тест 2: Длинный сегмент с большими касательными (много сегментов)
+        Point[] points2 = {
+            new Point(100, 350),
+            new Point(700, 350)
+        };
+        Point[] tangents2 = {
+            new Point(200, -300),
+            new Point(200, 300)
+        };
+
+        // Тест 3: Средний сегмент с противоположными касательными (средне-много сегментов)
+        Point[] points3 = {
+            new Point(100, 500),
+            new Point(400, 500)
+        };
+        Point[] tangents3 = {
+            new Point(100, -150),
+            new Point(-100, -150)
+        };
+
+        BufferedImage img = new BufferedImage(width, height + 200, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, width, height + 200);
+
+        // Заголовок
+        g.setColor(Color.BLACK);
+        g.setFont(new Font("Arial", Font.BOLD, 16));
+        g.drawString("Adaptive Segmentation Demo", 20, 30);
+
+        // Рисуем три тестовых случая
+        drawHermiteTestCase(g, points1, tangents1, "Short + small tangents", 50);
+        drawHermiteTestCase(g, points2, tangents2, "Long + large tangents", 250);
+        drawHermiteTestCase(g, points3, tangents3, "Medium + opposing tangents", 400);
+
+        g.dispose();
+        saveImage(img, "res/hw_hermite_adaptive_demo.png");
+    }
+
+    static void drawHermiteTestCase(Graphics2D g, Point[] points, Point[] tangents, String label, int yBase) {
+        int segs = estimateSegments(points[0], points[1], tangents[0], tangents[1]);
+        List<Point> curve = drawHermiteCurve(points, tangents);
+
+        // Метка
+        g.setColor(Color.BLACK);
+        g.setFont(new Font("Arial", Font.BOLD, 12));
+        g.drawString(label + " -> " + segs + " segments", 20, yBase);
+
+        // Кривая
+        g.setColor(Color.BLACK);
+        g.setStroke(new BasicStroke(2));
+        for (int i = 0; i < curve.size() - 1; i++) {
+            Point p1 = curve.get(i);
+            Point p2 = curve.get(i + 1);
+            g.drawLine((int)p1.x, (int)p1.y, (int)p2.x, (int)p2.y);
+        }
+
+        // Контрольные точки
+        g.setColor(Color.RED);
+        for (Point p : points) {
+            g.fillOval((int)p.x - 5, (int)p.y - 5, 10, 10);
+        }
+
+        // Касательные
+        g.setColor(Color.BLUE);
+        g.setStroke(new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                     10, new float[]{5, 5}, 0));
+        for (int i = 0; i < points.length; i++) {
+            Point p = points[i];
+            Point t = tangents[i];
+            g.drawLine((int)p.x, (int)p.y, (int)(p.x + t.x * 0.5), (int)(p.y + t.y * 0.5));
+        }
     }
 
     static void demonstrateCMYKHistograms() {
